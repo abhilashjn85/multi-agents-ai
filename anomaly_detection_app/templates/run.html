@@ -1,0 +1,527 @@
+{% extends "layout.html" %}
+
+{% block title %}Run Experiment - LLM Multi-Agent Anomaly Detection{% endblock %}
+
+{% block page_title %}Run Experiment{% endblock %}
+
+{% block page_actions %}
+<div class="btn-toolbar mb-2 mb-md-0">
+    <button type="button" class="btn btn-sm btn-success" id="runExperimentBtn">
+        <i class="fas fa-play-circle"></i> Start Experiment
+    </button>
+</div>
+{% endblock %}
+
+{% block additional_css %}
+<!-- Font Awesome for icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+<style>
+    .setup-section {
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+    }
+
+    .setup-section h3 {
+        margin-bottom: 1.5rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .workflow-card {
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .workflow-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .workflow-card.selected {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+
+    .config-card {
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .config-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+
+    .config-card.selected {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+
+    .progress-container {
+        display: none;
+        margin-top: 2rem;
+    }
+
+    .log-container {
+        height: 300px;
+        overflow-y: auto;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 0.9rem;
+    }
+
+    .log-entry {
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #eee;
+    }
+
+    .log-entry:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+
+    .log-timestamp {
+        color: #666;
+        font-size: 0.8rem;
+    }
+
+    .log-level-INFO {
+        color: #0d6efd;
+    }
+
+    .log-level-WARNING {
+        color: #ffc107;
+    }
+
+    .log-level-ERROR {
+        color: #dc3545;
+    }
+
+    .log-agent {
+        font-weight: bold;
+        color: #6f42c1;
+    }
+
+    .log-phase {
+        font-style: italic;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            Select a workflow and configuration, then start the experiment. You can monitor progress and view logs in real-time.
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="setup-section">
+            <h3>Select Workflow</h3>
+
+            <div class="row row-cols-1 row-cols-md-2 g-4" id="workflow-container">
+                {% for workflow in workflows %}
+                <div class="col">
+                    <div class="card h-100 workflow-card" data-workflow-id="{{ workflow.id }}">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ workflow.name }}</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">{{ workflow.process_type|capitalize }} Process</h6>
+                            <p class="card-text">
+                                <small>Agents: {{ workflow.agent_ids|length }}</small>
+                                <br>
+                                <small>Tasks: {{ workflow.tasks|length }}</small>
+                            </p>
+                        </div>
+                        <div class="card-footer">
+                            <small class="text-muted">Last updated: {{ workflow.updated_at|truncate(16, True, '') }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% if not workflows %}
+                <div class="col-12">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        No workflows available. Please <a href="{{ url_for('workflow') }}">create a workflow</a> first.
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="setup-section">
+            <h3>Select Configuration</h3>
+
+            <div class="row row-cols-1 g-4" id="config-container">
+                {% for config in configs %}
+                <div class="col">
+                    <div class="card h-100 config-card" data-config-id="{{ config.id }}">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ config.name }}</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">{{ config.objective }}</h6>
+                            <p class="card-text">{{ config.description }}</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <small>GA Population: {{ config.ga_params.population_size }}</small>
+                                </div>
+                                <div class="col-md-6">
+                                    <small>GA Generations: {{ config.ga_params.generations }}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% if not configs %}
+                <div class="col-12">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        No configurations available. Please <a href="{{ url_for('config') }}">create a configuration</a> first.
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Upload Section -->
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="setup-section">
+            <h3>Upload Data</h3>
+
+            <form id="dataUploadForm" enctype="multipart/form-data">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="mb-3">
+                            <label for="dataFile" class="form-label">Data File (CSV or Excel)</label>
+                            <input class="form-control" type="file" id="dataFile" name="data_file" accept=".csv, .xlsx">
+                        </div>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary" id="uploadDataBtn">Upload</button>
+                    </div>
+                </div>
+            </form>
+
+            <div id="dataFileInfo" class="mt-3" style="display: none;">
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <span id="dataFileMessage"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Experiment Progress -->
+<div class="row mt-4 progress-container" id="experimentProgressContainer">
+    <div class="col-md-12">
+        <div class="setup-section">
+            <div class="d-flex justify-content-between">
+                <h3>Experiment Progress</h3>
+                <button type="button" class="btn btn-outline-danger" id="cancelExperimentBtn">
+                    <i class="fas fa-stop-circle"></i> Cancel
+                </button>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label">Overall Progress</label>
+                <div class="progress" style="height: 25px;">
+                    <div id="overallProgress" class="progress-bar progress-bar-striped progress-bar-animated"
+                         role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Current Phase</h5>
+                            <p class="card-text" id="currentPhase">Initializing...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Current Agent</h5>
+                            <p class="card-text" id="currentAgent">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Execution Log</label>
+                <div class="log-container" id="executionLog">
+                    <!-- Log entries will be added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script>
+    $(document).ready(function() {
+        let selectedWorkflowId = null;
+        let selectedConfigId = null;
+        let currentExperimentId = null;
+        let logPollingInterval = null;
+
+        // Handle workflow selection
+        $('.workflow-card').on('click', function() {
+            $('.workflow-card').removeClass('selected');
+            $(this).addClass('selected');
+            selectedWorkflowId = $(this).data('workflow-id');
+        });
+
+        // Handle configuration selection
+        $('.config-card').on('click', function() {
+            $('.config-card').removeClass('selected');
+            $(this).addClass('selected');
+            selectedConfigId = $(this).data('config-id');
+        });
+
+        // Handle data upload
+        $('#uploadDataBtn').on('click', function() {
+            const formData = new FormData(document.getElementById('dataUploadForm'));
+
+            // Check if a file was selected
+            if ($('#dataFile').val() === '') {
+                alert('Please select a file to upload.');
+                return;
+            }
+
+            // Upload the file
+            $.ajax({
+                url: '/api/upload-data',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    if (response.status === 'success') {
+                        $('#dataFileMessage').text('Data file uploaded successfully: ' + $('#dataFile').val().split('\\').pop());
+                        $('#dataFileInfo').show();
+                    } else {
+                        alert('Error uploading data: ' + response.message);
+                    }
+                },
+                error: function(error) {
+                    alert('Error uploading data: ' + error.responseText);
+                }
+            });
+        });
+
+        // Handle experiment start
+        $('#runExperimentBtn').on('click', function() {
+            // Validate selections
+            if (!selectedWorkflowId) {
+                alert('Please select a workflow.');
+                return;
+            }
+
+            if (!selectedConfigId) {
+                alert('Please select a configuration.');
+                return;
+            }
+
+            // Check if data was uploaded
+            if ($('#dataFileInfo').is(':hidden')) {
+                if (!confirm('No data file has been uploaded. Continue anyway?')) {
+                    return;
+                }
+            }
+
+            // Start the experiment
+            $.ajax({
+                url: '/run',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    workflow_id: selectedWorkflowId,
+                    config_id: selectedConfigId
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        currentExperimentId = response.experiment_id;
+
+                        // Show progress container
+                        $('#experimentProgressContainer').show();
+
+                        // Disable the run button
+                        $('#runExperimentBtn').prop('disabled', true);
+
+                        // Start polling for updates
+                        clearInterval(logPollingInterval);
+                        logPollingInterval = setInterval(pollExperimentStatus, 2000);
+
+                        // Initial update
+                        pollExperimentStatus();
+                    } else {
+                        alert('Error starting experiment: ' + response.message);
+                    }
+                },
+                error: function(error) {
+                    alert('Error starting experiment: ' + error.responseText);
+                }
+            });
+        });
+
+        // Handle experiment cancellation
+        $('#cancelExperimentBtn').on('click', function() {
+            if (currentExperimentId && confirm('Are you sure you want to cancel the experiment?')) {
+                $.ajax({
+                    url: `/api/run/${currentExperimentId}/cancel`,
+                    type: 'POST',
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            clearInterval(logPollingInterval);
+                            alert('Experiment cancelled successfully.');
+
+                            // Enable the run button
+                            $('#runExperimentBtn').prop('disabled', false);
+                        } else {
+                            alert('Error cancelling experiment: ' + response.message);
+                        }
+                    },
+                    error: function(error) {
+                        alert('Error cancelling experiment: ' + error.responseText);
+                    }
+                });
+            }
+        });
+
+        // Poll experiment status
+        function pollExperimentStatus() {
+            if (!currentExperimentId) return;
+
+            $.ajax({
+                url: `/api/run/${currentExperimentId}`,
+                type: 'GET',
+                success: function(response) {
+                    updateExperimentStatus(response);
+
+                    // If experiment is completed or failed, stop polling
+                    if (response.status === 'completed' || response.status === 'failed') {
+                        clearInterval(logPollingInterval);
+
+                        // Enable the run button
+                        $('#runExperimentBtn').prop('disabled', false);
+
+                        // Show a notification
+                        const message = response.status === 'completed'
+                            ? 'Experiment completed successfully!'
+                            : 'Experiment failed. Check the logs for details.';
+
+                        alert(message);
+
+                        // If completed, show a link to results
+                        if (response.status === 'completed') {
+                            $('#executionLog').append(`
+                                <div class="log-entry">
+                                    <span class="log-timestamp">${getCurrentTimestamp()}</span>
+                                    <span class="log-level-INFO">INFO</span>
+                                    <span class="log-message">
+                                        Experiment completed.
+                                        <a href="/results/${currentExperimentId}" class="btn btn-sm btn-primary">
+                                            View Results
+                                        </a>
+                                    </span>
+                                </div>
+                            `);
+
+                            // Scroll to bottom
+                            $('#executionLog').scrollTop($('#executionLog')[0].scrollHeight);
+                        }
+                    }
+                },
+                error: function(error) {
+                    console.error('Error polling experiment status:', error);
+                }
+            });
+        }
+
+        // Update experiment status
+        function updateExperimentStatus(status) {
+            // Update progress bar
+            const progress = Math.round(status.progress * 100);
+            $('#overallProgress').css('width', `${progress}%`).attr('aria-valuenow', progress).text(`${progress}%`);
+
+            // Update current phase and agent
+            $('#currentPhase').text(status.current_phase || 'Initializing...');
+            $('#currentAgent').text(status.current_agent || '-');
+
+            // Update logs
+            if (status.recent_logs && status.recent_logs.length > 0) {
+                for (const log of status.recent_logs) {
+                    // Check if this log entry is already in the log container
+                    const logId = `log-${log.timestamp}`;
+                    if ($(`#${logId}`).length === 0) {
+                        $('#executionLog').append(`
+                            <div class="log-entry" id="${logId}">
+                                <span class="log-timestamp">${formatTimestamp(log.timestamp)}</span>
+                                <span class="log-level-${log.level}">${log.level}</span>
+                                ${log.agent ? `<span class="log-agent">[${log.agent}]</span>` : ''}
+                                ${log.phase ? `<span class="log-phase">(${log.phase})</span>` : ''}
+                                <span class="log-message">${log.message}</span>
+                            </div>
+                        `);
+                    }
+                }
+
+                // Scroll to bottom
+                $('#executionLog').scrollTop($('#executionLog')[0].scrollHeight);
+            }
+        }
+
+        // Format timestamp
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString();
+        }
+
+        // Get current timestamp
+        function getCurrentTimestamp() {
+            return new Date().toLocaleTimeString();
+        }
+
+        // Clear experiment status when leaving the page
+        $(window).on('beforeunload', function() {
+            clearInterval(logPollingInterval);
+        });
+
+        // Initialize with URL parameters if any
+        const urlParams = new URLSearchParams(window.location.search);
+        const workflowIdParam = urlParams.get('workflow_id');
+
+        if (workflowIdParam) {
+            const workflowCard = $(`.workflow-card[data-workflow-id="${workflowIdParam}"]`);
+            if (workflowCard.length > 0) {
+                workflowCard.click();
+            }
+        }
+    });
+</script>
+{% endblock %}

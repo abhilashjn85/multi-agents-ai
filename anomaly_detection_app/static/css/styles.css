@@ -1,0 +1,366 @@
+/* Main CSS styles for LLM Multi-Agent Anomaly Detection UI */
+
+/* Global Styles */
+:root {
+    --primary-color: #0d6efd;
+    --secondary-color: #6c757d;
+    --success-color: #198754;
+    --info-color: #0dcaf0;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --light-color: #f8f9fa;
+    --dark-color: #212529;
+    --border-color: #dee2e6;
+    --shadow-sm: 0 .125rem .25rem rgba(0,0,0,.075);
+    --shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+    --shadow-lg: 0 1rem 3rem rgba(0,0,0,.175);
+    --transition: all 0.3s ease;
+}
+
+body {
+    padding-top: 56px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+    padding-bottom: 60px;
+}
+
+/* Sidebar */
+.sidebar {
+    position: fixed;
+    top: 56px;
+    bottom: 0;
+    left: 0;
+    z-index: 100;
+    padding: 48px 0 0;
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+}
+
+.sidebar-sticky {
+    position: relative;
+    top: 0;
+    height: calc(100vh - 48px);
+    padding-top: .5rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.sidebar .nav-link {
+    font-weight: 500;
+    color: var(--secondary-color);
+}
+
+.sidebar .nav-link.active {
+    color: var(--primary-color);
+}
+
+.sidebar .nav-link:hover {
+    color: var(--primary-color);
+}
+
+.sidebar .nav-link i {
+    margin-right: 8px;
+}
+
+.sidebar-heading {
+    font-size: .75rem;
+    text-transform: uppercase;
+}
+
+/* Cards and Panels */
+.card {
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.card:hover {
+    box-shadow: var(--shadow);
+}
+
+.card-header {
+    background-color: rgba(0, 0, 0, .03);
+    border-bottom: 1px solid rgba(0, 0, 0, .125);
+}
+
+/* Animation for loading indicators */
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.loading {
+    animation: pulse 1.5s infinite;
+}
+
+/* Agent cards in workflow editor */
+.agent-card {
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    cursor: grab;
+    transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.agent-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow);
+}
+
+.agent-card:active {
+    cursor: grabbing;
+}
+
+/* Workflow canvas */
+.workflow-canvas {
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    background-color: var(--light-color);
+    width: 100%;
+    height: 600px;
+    position: relative;
+}
+
+/* Form controls with icons */
+.form-icon-group {
+    position: relative;
+}
+
+.form-icon-group .form-control {
+    padding-left: 2.5rem;
+}
+
+.form-icon-group i {
+    position: absolute;
+    left: 0.875rem;
+    top: 0.5rem;
+    color: var(--secondary-color);
+}
+
+/* Buttons and Actions */
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.5rem;
+}
+
+.btn-icon i {
+    margin-right: 0.375rem;
+}
+
+.btn-icon-only {
+    width: 2.5rem;
+    height: 2.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.action-bar {
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background-color: rgba(0, 0, 0, .03);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Progress and Status indicators */
+.status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.status-running {
+    background-color: var(--primary-color);
+    animation: pulse 1.5s infinite;
+}
+
+.status-completed {
+    background-color: var(--success-color);
+}
+
+.status-failed {
+    background-color: var(--danger-color);
+}
+
+.status-waiting {
+    background-color: var(--secondary-color);
+}
+
+/* Footer */
+.footer {
+    background-color: var(--light-color);
+    border-top: 1px solid var(--border-color);
+    padding: 1rem 0;
+    margin-top: auto;
+}
+
+/* Logs and Code blocks */
+.log-viewer {
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    background-color: var(--dark-color);
+    color: white;
+    padding: 1rem;
+    border-radius: 0.25rem;
+    height: 300px;
+    overflow-y: auto;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.log-entry {
+    margin-bottom: 0.5rem;
+    white-space: pre-wrap;
+}
+
+.log-timestamp {
+    color: var(--secondary-color);
+    margin-right: 0.5rem;
+}
+
+.log-level-info {
+    color: var(--info-color);
+}
+
+.log-level-warning {
+    color: var(--warning-color);
+}
+
+.log-level-error {
+    color: var(--danger-color);
+}
+
+/* Tooltips and Popovers */
+.custom-tooltip {
+    --bs-tooltip-bg: var(--dark-color);
+    --bs-tooltip-color: white;
+}
+
+/* Visualizations */
+.visualization-container {
+    padding: 1rem;
+    background-color: white;
+    border-radius: 0.25rem;
+    border: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
+.visualization-title {
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+    font-weight: 500;
+}
+
+/* Modal customizations */
+.modal-header {
+    background-color: var(--light-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-footer {
+    background-color: var(--light-color);
+    border-top: 1px solid var(--border-color);
+}
+
+/* Responsive adjustments */
+@media (max-width: 767.98px) {
+    .sidebar {
+        position: static;
+        height: auto;
+        padding: 0;
+    }
+
+    .sidebar-sticky {
+        height: auto;
+    }
+
+    main {
+        padding-top: 1rem;
+    }
+
+    .workflow-canvas {
+        height: 400px;
+    }
+}
+
+/* Animation for page transitions */
+.fade-enter {
+    opacity: 0;
+}
+
+.fade-enter-active {
+    opacity: 1;
+    transition: opacity 200ms;
+}
+
+.fade-exit {
+    opacity: 1;
+}
+
+.fade-exit-active {
+    opacity: 0;
+    transition: opacity 200ms;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background-color: var(--light-color);
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--secondary-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--dark-color);
+}
+
+/* Print styles */
+@media print {
+    .sidebar, .navbar, .footer, .btn-toolbar {
+        display: none !important;
+    }
+
+    body {
+        padding-top: 0;
+    }
+
+    main {
+        padding-bottom: 0;
+    }
+
+    .card {
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+
+    .log-viewer {
+        height: auto;
+        max-height: 500px;
+    }
+}

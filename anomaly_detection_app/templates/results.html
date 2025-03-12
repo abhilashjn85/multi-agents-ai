@@ -1,0 +1,406 @@
+{% extends "layout.html" %}
+
+{% block title %}Experiment Results - LLM Multi-Agent Anomaly Detection{% endblock %}
+
+{% block page_title %}Experiment Results - {{ experiment.name }}{% endblock %}
+
+{% block page_actions %}
+<div class="btn-toolbar mb-2 mb-md-0">
+    <div class="btn-group me-2">
+        <a href="{{ url_for('run_experiment') }}" class="btn btn-sm btn-primary">
+            <i class="fas fa-play-circle"></i> New Experiment
+        </a>
+    </div>
+    <div class="btn-group">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="downloadResultsBtn">
+            <i class="fas fa-download"></i> Download Results
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block additional_css %}
+<!-- Font Awesome for icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+<style>
+    .results-section {
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+    }
+
+    .results-section h3 {
+        margin-bottom: 1.5rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .metric-card {
+        text-align: center;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        transition: transform 0.2s ease;
+    }
+
+    .metric-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .metric-value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+
+    .log-container {
+        height: 300px;
+        overflow-y: auto;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 0.9rem;
+    }
+
+    .feature-importance-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .feature-importance-item:last-child {
+        border-bottom: none;
+    }
+
+    .feature-importance-bar {
+        height: 10px;
+        background-color: #0d6efd;
+        border-radius: 5px;
+        margin-top: 5px;
+    }
+
+    .log-entry {
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #eee;
+    }
+
+    .log-entry:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+
+    .log-timestamp {
+        color: #666;
+        font-size: 0.8rem;
+    }
+
+    .log-level-INFO {
+        color: #0d6efd;
+    }
+
+    .log-level-WARNING {
+        color: #ffc107;
+    }
+
+    .log-level-ERROR {
+        color: #dc3545;
+    }
+
+    .log-agent {
+        font-weight: bold;
+        color: #6f42c1;
+    }
+
+    .log-phase {
+        font-style: italic;
+        color: #6c757d;
+    }
+
+    .threshold-marker {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background-color: red;
+        z-index: 1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Experiment Overview</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <th scope="row">Experiment ID</th>
+                                    <td>{{ experiment.id }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Status</th>
+                                    <td>
+                                        {% if experiment.status == 'completed' %}
+                                        <span class="badge bg-success">Completed</span>
+                                        {% elif experiment.status == 'running' %}
+                                        <span class="badge bg-primary">Running</span>
+                                        {% elif experiment.status == 'failed' %}
+                                        <span class="badge bg-danger">Failed</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ experiment.status|capitalize }}</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Created</th>
+                                    <td>{{ experiment.created_at }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Started</th>
+                                    <td>{{ experiment.started_at }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Completed</th>
+                                    <td>{{ experiment.completed_at }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <th scope="row">Workflow</th>
+                                    <td><a href="{{ url_for('view_workflow', workflow_id=experiment.workflow_id) }}">View Workflow</a></td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Configuration</th>
+                                    <td>{{ experiment.config_id }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Data Path</th>
+                                    <td>{{ experiment.data_path }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Output Path</th>
+                                    <td>{{ experiment.output_path }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="results-section">
+            <h3>Model Metrics</h3>
+
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card metric-card bg-primary text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">ROC-AUC</h5>
+                            <p class="metric-value">{{ results.metrics.roc_auc|round(4) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card metric-card bg-success text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">PR-AUC</h5>
+                            <p class="metric-value">{{ results.metrics.pr_auc|round(4) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card metric-card bg-info text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Precision</h5>
+                            <p class="metric-value">{{ results.metrics.anomaly_precision|round(4) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card metric-card bg-warning text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Recall</h5>
+                            <p class="metric-value">{{ results.metrics.anomaly_recall|round(4) }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">F1 Score</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h2 class="mb-0">{{ results.metrics.f1_score|round(4) }}</h2>
+                                <div>
+                                    <p class="mb-1">Optimal Threshold: {{ results.metrics.optimal_threshold }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Confusion Matrix</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm table-bordered text-center">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" colspan="2" rowspan="2"></th>
+                                        <th scope="col" colspan="2">Predicted</th>
+                                    </tr>
+                                    <tr>
+                                        <th scope="col">Normal</th>
+                                        <th scope="col">Anomaly</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <th scope="row" rowspan="2">Actual</th>
+                                        <th scope="row">Normal</th>
+                                        <td>{{ results.confusion_matrix[0][0] }}</td>
+                                        <td>{{ results.confusion_matrix[0][1] }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Anomaly</th>
+                                        <td>{{ results.confusion_matrix[1][0] }}</td>
+                                        <td>{{ results.confusion_matrix[1][1] }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="results-section">
+            <h3>Feature Importance</h3>
+
+            <div class="feature-importance-container">
+                {% for feature in results.feature_importance %}
+                <div class="feature-importance-item">
+                    <div class="feature-name">{{ feature.feature }}</div>
+                    <div class="feature-value">{{ feature.importance|round(4) }}</div>
+                </div>
+                <div class="feature-importance-bar" style="width: {{ (feature.importance / results.feature_importance[0].importance * 100)|round }}%"></div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="results-section">
+            <h3>Visualizations</h3>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">ROC Curve</h5>
+                            <img src="{{ results.visualization_paths.roc_curve }}" alt="ROC Curve" class="img-fluid">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">PR Curve</h5>
+                            <img src="{{ results.visualization_paths.pr_curve }}" alt="PR Curve" class="img-fluid">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Feature Importance</h5>
+                            <img src="{{ results.visualization_paths.feature_importance }}" alt="Feature Importance" class="img-fluid">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="results-section">
+            <h3>Execution Log</h3>
+
+            <div class="log-container" id="executionLog">
+                {% for log in experiment.log_entries %}
+                <div class="log-entry">
+                    <span class="log-timestamp">{{ log.timestamp }}</span>
+                    <span class="log-level-{{ log.level }}">{{ log.level }}</span>
+                    {% if log.agent %}
+                    <span class="log-agent">[{{ log.agent }}]</span>
+                    {% endif %}
+                    {% if log.phase %}
+                    <span class="log-phase">({{ log.phase }})</span>
+                    {% endif %}
+                    <span class="log-message">{{ log.message }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script>
+    $(document).ready(function() {
+        // Download results button
+        $('#downloadResultsBtn').on('click', function() {
+            const experimentId = '{{ experiment.id }}';
+
+            // Fetch results data
+            $.getJSON(`/api/results/${experimentId}`, function(data) {
+                // Convert to JSON string and create downloadable file
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", `experiment_${experimentId}_results.json`);
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+            });
+        });
+
+        // Scroll to bottom of log container
+        const logContainer = document.getElementById('executionLog');
+        if (logContainer) {
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+    });
+</script>
+{% endblock %}
