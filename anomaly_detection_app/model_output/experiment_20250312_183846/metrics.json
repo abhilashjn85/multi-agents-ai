@@ -1,0 +1,57 @@
+{
+    "roc_auc": 0.9997497497497497,
+    "pr_auc": 0.9635606874328679,
+    "optimal_threshold_f1": 0.3500000000000001,
+    "optimal_threshold_f2": 0.3500000000000001,
+    "anomaly_precision": 1.0,
+    "anomaly_recall": 0.6428571428571429,
+    "anomaly_f1": 0.782608695652174,
+    "interpretation": {
+        "summary": "Model achieved ROC-AUC of 0.9997 and PR-AUC of 0.9636. For normal cases (class 0), precision is 0.9975 and recall is 1.0000. For anomaly cases (class 1), precision is 1.0000 and recall is 0.6429.",
+        "strengths": [
+            "Strong overall discriminative ability (ROC-AUC > 0.8)",
+            "Good precision for anomaly detection, reducing false alerts"
+        ],
+        "weaknesses": [
+            "Large imbalance between precision and recall for anomalies"
+        ],
+        "suggestions": []
+    },
+    "confusion_matrix": [
+        [
+            1998,
+            0
+        ],
+        [
+            5,
+            9
+        ]
+    ],
+    "classification_report": {
+        "0": {
+            "precision": 0.9975037443834248,
+            "recall": 1.0,
+            "f1-score": 0.9987503124218945,
+            "support": 1998.0
+        },
+        "1": {
+            "precision": 1.0,
+            "recall": 0.6428571428571429,
+            "f1-score": 0.782608695652174,
+            "support": 14.0
+        },
+        "accuracy": 0.9975149105367793,
+        "macro avg": {
+            "precision": 0.9987518721917124,
+            "recall": 0.8214285714285714,
+            "f1-score": 0.8906795040370342,
+            "support": 2012.0
+        },
+        "weighted avg": {
+            "precision": 0.9975211139553095,
+            "recall": 0.9975149105367793,
+            "f1-score": 0.9972463449095804,
+            "support": 2012.0
+        }
+    }
+}

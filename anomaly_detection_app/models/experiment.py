@@ -10,6 +10,7 @@ class ExperimentConfig:
     """
     Represents the configuration for an experiment.
     """
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "New Configuration"
     description: str = ""
@@ -57,10 +58,13 @@ class ExperimentConfig:
             input_columns={
                 "reason_code_sequence": "REASON_CODE_SEQUENCE",
                 "liability_sequence": "LIABILITY_SEQUENCE",
-                "mm_status_sequence": "MM_STATUS_SEQUENCE"
+                "mm_status_sequence": "MM_STATUS_SEQUENCE",
             },
             categorical_columns=[
-                "REASON_CODE", "CLAIM_TYPE", "CLAIM_SUBTYPE", "IS_SUBSEQUENT"
+                "REASON_CODE",
+                "CLAIM_TYPE",
+                "CLAIM_SUBTYPE",
+                "IS_SUBSEQUENT",
             ],
             multi_value_columns=["E_TXN_INDICATOR"],
             output_column="IS_ANOMALY",
@@ -70,7 +74,7 @@ class ExperimentConfig:
                     {
                         "type": "repeated_step",
                         "step": "RECOVER_DISPUTED_FUNDS,SUCCESS",
-                        "min_repetitions": 2
+                        "min_repetitions": 2,
                     }
                 ]
             },
@@ -83,16 +87,16 @@ class ExperimentConfig:
                 "min_child_weight": {"min": 1, "max": 10},
                 "gamma": {"min": 0, "max": 5},
                 "lambda": {"min": 0.01, "max": 10},
-                "alpha": {"min": 0.01, "max": 10}
+                "alpha": {"min": 0.01, "max": 10},
             },
             ga_params={
                 "population_size": 50,
-                "generations": 10,
+                "generations": 1,
                 "mutation_rate": 0.1,
-                "crossover_rate": 0.8
+                "crossover_rate": 0.8,
             },
             objective="binary:logistic",
-            eval_metric="auc"
+            eval_metric="auc",
         )
 
 
@@ -101,6 +105,7 @@ class Experiment:
     """
     Represents an experiment run.
     """
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "New Experiment"
     description: str = ""
@@ -147,7 +152,7 @@ class Experiment:
             "message": message,
             "level": level,
             "agent": agent or self.current_agent,
-            "phase": phase or self.current_phase
+            "phase": phase or self.current_phase,
         }
         self.log_entries.append(entry)
 

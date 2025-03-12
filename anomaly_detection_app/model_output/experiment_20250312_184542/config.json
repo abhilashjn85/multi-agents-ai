@@ -1,0 +1,81 @@
+{
+  "id": "81b022c8-eeaf-485d-892a-b0d5f1e5ee05",
+  "name": "Default Configuration",
+  "description": "Default configuration for anomaly detection",
+  "input_columns": {
+    "reason_code_sequence": "REASON_CODE_SEQUENCE",
+    "liability_sequence": "LIABILITY_SEQUENCE",
+    "mm_status_sequence": "MM_STATUS_SEQUENCE"
+  },
+  "categorical_columns": [
+    "REASON_CODE",
+    "CLAIM_TYPE",
+    "CLAIM_SUBTYPE",
+    "IS_SUBSEQUENT"
+  ],
+  "multi_value_columns": [
+    "E_TXN_INDICATOR"
+  ],
+  "output_column": "IS_ANOMALY",
+  "n_gram_range": [
+    1,
+    3
+  ],
+  "anomaly_rules": {
+    "MM_STATUS_SEQUENCE": [
+      {
+        "type": "repeated_step",
+        "step": "RECOVER_DISPUTED_FUNDS,SUCCESS",
+        "min_repetitions": 2
+      }
+    ]
+  },
+  "model_params": {
+    "max_depth": {
+      "min": 3,
+      "max": 10
+    },
+    "eta": {
+      "min": 0.01,
+      "max": 0.3
+    },
+    "learning_rate": {
+      "min": 0.01,
+      "max": 0.05
+    },
+    "subsample": {
+      "min": 0.5,
+      "max": 1.0
+    },
+    "colsample_bytree": {
+      "min": 0.5,
+      "max": 1.0
+    },
+    "min_child_weight": {
+      "min": 1,
+      "max": 10
+    },
+    "gamma": {
+      "min": 0,
+      "max": 5
+    },
+    "lambda": {
+      "min": 0.01,
+      "max": 10
+    },
+    "alpha": {
+      "min": 0.01,
+      "max": 10
+    }
+  },
+  "ga_params": {
+    "population_size": 50,
+    "generations": 1,
+    "mutation_rate": 0.1,
+    "crossover_rate": 0.8
+  },
+  "objective": "binary:logistic",
+  "eval_metric": "auc",
+  "llm_api_url": "",
+  "llm_model_name": "mistral-7b-inst-2252b"
+}

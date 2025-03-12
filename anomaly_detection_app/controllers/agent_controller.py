@@ -16,10 +16,24 @@ class AgentController:
 
     def _load_default_agents(self):
         """Load the default agents based on the original code."""
+        # Define fixed UUIDs for default agents to ensure consistency
+        # This is critical for proper agent references across controllers
+        default_agent_ids = {
+            "Data Understanding Specialist": "00000000-0000-0000-0000-000000000001",
+            "Data Preprocessing Engineer": "00000000-0000-0000-0000-000000000002",
+            "Feature Engineering Specialist": "00000000-0000-0000-0000-000000000003",
+            "Data Splitting Specialist": "00000000-0000-0000-0000-000000000004",
+            "Model Optimization Specialist": "00000000-0000-0000-0000-000000000005",
+            "Model Training Specialist": "00000000-0000-0000-0000-000000000006",
+            "Model Evaluation Specialist": "00000000-0000-0000-0000-000000000007",
+            "Feature Analysis Specialist": "00000000-0000-0000-0000-000000000008",
+            "Quality Assessment Specialist": "00000000-0000-0000-0000-000000000009"
+        }
+
         # Define the roles and responsibilities from the original code
         default_agents = [
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Data Understanding Specialist"],
                 "name": "Data Understanding Specialist",
                 "role": "Data Understanding Specialist",
                 "goal": "Analyze data and validate configuration compatibility",
@@ -30,7 +44,7 @@ class AgentController:
                 "allow_delegation": True
             },
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Data Preprocessing Engineer"],
                 "name": "Data Preprocessing Engineer",
                 "role": "Data Preprocessing Engineer",
                 "goal": "Transform raw data into processable format",
@@ -41,7 +55,7 @@ class AgentController:
                 "allow_delegation": True
             },
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Feature Engineering Specialist"],
                 "name": "Feature Engineering Specialist",
                 "role": "Feature Engineering Specialist",
                 "goal": "Create optimal features for anomaly detection",
@@ -53,7 +67,7 @@ class AgentController:
                 "allow_delegation": True
             },
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Data Splitting Specialist"],
                 "name": "Data Splitting Specialist",
                 "role": "Data Splitting Specialist",
                 "goal": "Create optimal train/test splits with balanced anomaly ratios",
@@ -64,7 +78,7 @@ class AgentController:
                 "allow_delegation": True
             },
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Model Optimization Specialist"],
                 "name": "Model Optimization Specialist",
                 "role": "Model Optimization Specialist",
                 "goal": "Find optimal model hyperparameters",
@@ -75,7 +89,7 @@ class AgentController:
                 "allow_delegation": True
             },
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Model Training Specialist"],
                 "name": "Model Training Specialist",
                 "role": "Model Training Specialist",
                 "goal": "Train robust anomaly detection models",
@@ -86,7 +100,7 @@ class AgentController:
                 "allow_delegation": True
             },
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Model Evaluation Specialist"],
                 "name": "Model Evaluation Specialist",
                 "role": "Model Evaluation Specialist",
                 "goal": "Evaluate model performance with appropriate metrics",
@@ -97,7 +111,7 @@ class AgentController:
                 "allow_delegation": True
             },
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Feature Analysis Specialist"],
                 "name": "Feature Analysis Specialist",
                 "role": "Feature Analysis Specialist",
                 "goal": "Analyze feature importance and suggest improvements",
@@ -108,7 +122,7 @@ class AgentController:
                 "allow_delegation": True
             },
             {
-                "id": str(uuid.uuid4()),
+                "id": default_agent_ids["Quality Assessment Specialist"],
                 "name": "Quality Assessment Specialist",
                 "role": "Quality Assessment Specialist",
                 "goal": "Ensure the final model meets quality standards",
@@ -184,3 +198,20 @@ class AgentController:
 
             return True
         return False
+
+    def to_crew_agent(self, agent_dict):
+        """Convert agent dictionary to CrewAI Agent."""
+        from crewai import Agent as CrewAgent
+
+        # Create a CrewAI Agent from the agent dictionary
+        return CrewAgent(
+            role=agent_dict['role'],
+            goal=agent_dict['goal'],
+            backstory=agent_dict['backstory'],
+            verbose=agent_dict.get('verbose', True),
+            allow_delegation=agent_dict.get('allow_delegation', True)
+        )
+
+    def get_agent_map(self):
+        """Get a mapping of agent names to IDs."""
+        return {agent.name: agent.id for agent in self.agents.values()}

@@ -8,6 +8,7 @@ class Agent:
     """
     Represents an AI agent in the workflow.
     """
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     role: str = ""
@@ -44,7 +45,7 @@ class Agent:
         """Create an Agent from a JSON string."""
         return cls.from_dict(json.loads(json_str))
 
-    def to_crew_agent(self):
+    def to_crew_agent(self, agent_dict):
         """
         Convert to a CrewAI Agent object for use in the actual workflow.
         This method would import and return a CrewAI Agent with the
@@ -52,4 +53,5 @@ class Agent:
         """
         # In a real implementation, this would create and return a CrewAI Agent
         # For now, just return the dictionary representation
-        return self.to_dict()
+        from crewai import Agent  # Import CrewAI agent
+        return Agent(name=agent_dict["name"], role=agent_dict["role"])

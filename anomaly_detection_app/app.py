@@ -19,10 +19,14 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['MODEL_OUTPUT_FOLDER'], exist_ok=True)
 
 # Initialize controllers
-workflow_controller = WorkflowController()
 agent_controller = AgentController()
+workflow_controller = WorkflowController()
 experiment_controller = ExperimentController(app.config)
 results_controller = ResultsController(app.config)
+
+# Register dependencies between controllers
+workflow_controller.register_agent_controller(agent_controller)
+experiment_controller.register_controllers(agent_controller, workflow_controller)
 
 
 @app.route('/')
@@ -41,7 +45,8 @@ def index():
 def workflow():
     """Render the workflow editor page"""
     agents = agent_controller.get_available_agents()
-    return render_template('workflow.html', agents=agents)
+    workflows = workflow_controller.get_workflows()
+    return render_template('workflow.html', agents=agents, workflows=workflows)
 
 
 @app.route('/workflow/<workflow_id>')
@@ -77,13 +82,18 @@ def api_workflow(workflow_id):
         return jsonify({"status": "success"})
 
 
-@app.route('/api/agents', methods=['GET'])
+@app.route('/api/agents', methods=['GET', 'POST'])
 def api_agents():
-    """API endpoint to get all available agents"""
-    return jsonify(agent_controller.get_available_agents())
+    """API endpoint to get all available agents or create new one"""
+    if request.method == 'GET':
+        return jsonify(agent_controller.get_available_agents())
+    elif request.method == 'POST':
+        data = request.json
+        agent = agent_controller.create_agent(data)
+        return jsonify(agent)
 
 
-@app.route('/api/agents/<agent_id>', methods=['GET', 'PUT'])
+@app.route('/api/agents/<agent_id>', methods=['GET', 'PUT', 'DELETE'])
 def api_agent(agent_id):
     """API endpoint for agent operations"""
     if request.method == 'GET':
@@ -92,6 +102,9 @@ def api_agent(agent_id):
         data = request.json
         agent = agent_controller.update_agent(agent_id, data)
         return jsonify(agent)
+    elif request.method == 'DELETE':
+        agent_controller.delete_agent(agent_id)
+        return jsonify({"status": "success"})
 
 
 @app.route('/config')
@@ -153,7 +166,7 @@ def api_upload_data():
         # Store the data path in the experiment controller
         experiment_controller.set_data_path(file_path)
 
-        return jsonify({"status": "success", "message": "Data file uploaded successfully"})
+        return jsonify({"status": "success", "message": "Data file uploaded successfully", "path": file_path})
 
     return jsonify({"status": "error", "message": "Invalid file type"})
 
@@ -169,8 +182,7 @@ def run_experiment():
         # Create a new experiment
         experiment = experiment_controller.create_experiment(workflow_id, config_id)
 
-        # Run the experiment in the background (in a real app this would be a Celery task)
-        # For now, we'll just run it synchronously
+        # Run the experiment in the background
         experiment_controller.run_experiment(experiment['id'])
 
         return jsonify({"status": "success", "experiment_id": experiment['id']})
@@ -186,6 +198,15 @@ def api_experiment_status(experiment_id):
     """API endpoint to get experiment status"""
     status = experiment_controller.get_experiment_status(experiment_id)
     return jsonify(status)
+
+
+@app.route('/api/run/<experiment_id>/cancel', methods=['POST'])
+def api_cancel_experiment(experiment_id):
+    """API endpoint to cancel an experiment"""
+    result = experiment_controller.cancel_experiment(experiment_id)
+    if result:
+        return jsonify({"status": "success", "message": "Experiment cancelled"})
+    return jsonify({"status": "error", "message": "Failed to cancel experiment or experiment not found"})
 
 
 @app.route('/results/<experiment_id>')
@@ -210,4 +231,4 @@ def allowed_file(filename, allowed_extensions):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='127.0.0.1', port=5000)

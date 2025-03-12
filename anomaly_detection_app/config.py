@@ -20,7 +20,8 @@ class Config:
     DEFAULT_CONFIG_PATH = os.environ.get('DEFAULT_CONFIG_PATH', 'config/config.json')
 
     # LLM API settings
-    LLM_API_URL = os.environ.get('LLM_API_URL', 'https://api.example.com/llm')
+    LLM_API_URL = os.environ.get('LLM_API_URL',
+                              'https://aiplatform.dev51.cbf.dev.paypalinc.com/seldon/seldon/mistral-7b-inst-624b0/v2/models/mistral-7b-inst-624b0/infer')
     LLM_API_KEY = os.environ.get('LLM_API_KEY', '')
     DEFAULT_MODEL_NAME = os.environ.get('DEFAULT_MODEL_NAME', 'mistral-7b-inst-2252b')
 

@@ -39,6 +39,14 @@ main {
     padding: 48px 0 0;
     box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
 }
+.bg-skyblue {
+    background-color: #87CEEB !important; /* Sky Blue */
+}
+
+.navbar {
+    border-bottom: 1px solid #ddd; /* Light gray border */
+    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1); /* Soft shadow */
+}
 
 .sidebar-sticky {
     position: relative;
@@ -335,6 +343,7 @@ main {
     background-color: var(--secondary-color);
     border-radius: 4px;
 }
+
 
 ::-webkit-scrollbar-thumb:hover {
     background-color: var(--dark-color);
