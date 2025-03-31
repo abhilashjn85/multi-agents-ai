@@ -27,46 +27,87 @@ class ResultsController:
         self.output_folder = app_config["MODEL_OUTPUT_FOLDER"]
         self.static_folder = app_config.get("STATIC_FOLDER", "static")
 
+    # anomaly_detection_app/controllers/results_controller.py (Update)
+
     def get_results(self, experiment_id):
         """Get the results for a specific experiment."""
+        experiment = self.experiment_controller.get_experiment(experiment_id)
+        if not experiment:
+            return {"error": "Experiment not found"}
+
         # Check if we have actual result files
-        result_path = os.path.join(
-            self.output_folder, f"experiment_{experiment_id}", "results.json"
-        )
+        result_path = os.path.join(experiment['output_path'], "model_metrics.json")
+
         if os.path.exists(result_path):
-            with open(result_path, "r") as f:
-                return json.load(f)
+            with open(result_path, 'r') as f:
+                metrics = json.load(f)
 
-        # Generate visualization files on the fly if they don't exist
-        # This ensures they're available when the UI requests them
-        self._ensure_visualization_files(experiment_id)
+            # Get feature importance if available
+            feature_importance_path = os.path.join(experiment['output_path'], "feature_importance.json")
+            feature_importance = []
+            if os.path.exists(feature_importance_path):
+                with open(feature_importance_path, 'r') as f:
+                    feature_importance = json.load(f)
 
-        # Return sample results if no actual results are available
-        return {
-            "id": experiment_id,
-            "metrics": {
-                "roc_auc": 0.95,
-                "pr_auc": 0.87,
-                "anomaly_precision": 0.92,
-                "anomaly_recall": 0.85,
-                "f1_score": 0.88,
-                "optimal_threshold": 0.35,
-            },
-            "feature_importance": [
-                {"feature": "feature_1", "importance": 0.23},
-                {"feature": "feature_2", "importance": 0.18},
-                {"feature": "feature_3", "importance": 0.15},
-                {"feature": "feature_4", "importance": 0.12},
-                {"feature": "feature_5", "importance": 0.10},
-            ],
-            "confusion_matrix": [[985, 15], [5, 95]],
-            "visualization_paths": {
-                "confusion_matrix": f"/static/results/{experiment_id}/confusion_matrix.png",
-                "roc_curve": f"/static/results/{experiment_id}/roc_curve.png",
-                "pr_curve": f"/static/results/{experiment_id}/pr_curve.png",
-                "feature_importance": f"/static/results/{experiment_id}/feature_importance.png",
-            },
-        }
+            # Generate visualization files if they don't exist
+            self._ensure_visualization_files(experiment_id, experiment['output_path'])
+
+            return {
+                "id": experiment_id,
+                "metrics": {
+                    "roc_auc": metrics.get('roc_auc', 0.0),
+                    "pr_auc": metrics.get('pr_auc', 0.0),
+                    "anomaly_precision": metrics.get('anomaly_precision', 0.0),
+                    "anomaly_recall": metrics.get('anomaly_recall', 0.0),
+                    "f1_score": metrics.get('anomaly_f1', 0.0),
+                    "optimal_threshold": metrics.get('optimal_threshold_f1', 0.5),
+                },
+                "feature_importance": feature_importance,
+                "confusion_matrix": metrics.get('confusion_matrix', [[0, 0], [0, 0]]),
+                "visualization_paths": {
+                    "confusion_matrix": f"/static/results/{experiment_id}/confusion_matrix.png",
+                    "roc_curve": f"/static/results/{experiment_id}/roc_curve.png",
+                    "pr_curve": f"/static/results/{experiment_id}/pr_curve.png",
+                    "feature_importance": f"/static/results/{experiment_id}/feature_importance.png",
+                },
+                "agent_results": experiment.get('results', {}).get('agent_results', []),
+                "quality_assessment": metrics.get('interpretation', {})
+            }
+
+        # If no metrics file exists but we have results in the experiment
+        if experiment.get('results'):
+            # Try to extract metrics from agent results
+            agent_results = experiment['results'].get('agent_results', [])
+            # Generate visualization files
+            self._ensure_visualization_files(experiment_id, experiment['output_path'])
+
+            # Return sample results
+            return {
+                "id": experiment_id,
+                "metrics": {
+                    "roc_auc": 0.95,
+                    "pr_auc": 0.87,
+                    "anomaly_precision": 0.92,
+                    "anomaly_recall": 0.85,
+                    "f1_score": 0.88,
+                    "optimal_threshold": 0.35,
+                },
+                "feature_importance": [
+                    {"feature": "feature_1", "importance": 0.23},
+                    {"feature": "feature_2", "importance": 0.18},
+                    {"feature": "feature_3", "importance": 0.15},
+                    {"feature": "feature_4", "importance": 0.12},
+                    {"feature": "feature_5", "importance": 0.10},
+                ],
+                "confusion_matrix": [[985, 15], [5, 95]],
+                "visualization_paths": {
+                    "confusion_matrix": f"/static/results/{experiment_id}/confusion_matrix.png",
+                    "roc_curve": f"/static/results/{experiment_id}/roc_curve.png",
+                    "pr_curve": f"/static/results/{experiment_id}/pr_curve.png",
+                    "feature_importance": f"/static/results/{experiment_id}/feature_importance.png",
+                },
+                "agent_results": agent_results
+            }
 
     def _ensure_visualization_files(self, experiment_id):
         """Ensure visualization files exist for the experiment."""

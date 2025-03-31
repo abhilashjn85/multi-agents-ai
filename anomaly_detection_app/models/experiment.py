@@ -127,9 +127,38 @@ class Experiment:
     # Results
     results: Dict[str, Any] = field(default_factory=dict)
 
+    # Storage for in-memory data during execution (not serialized)
+    raw_data: Any = None
+    processed_data: Any = None
+    label_encoders: Any = None
+    features: Any = None
+    feature_names: List[str] = field(default_factory=list)
+    labels: Any = None
+    vectorizer: Any = None
+    mlb: Any = None
+    X_train: Any = None
+    X_test: Any = None
+    y_train: Any = None
+    y_test: Any = None
+    best_params: Any = None
+    model: Any = None
+    evaluation_results: Any = None
+    feature_importance: Any = None
+    quality_assessment: Any = None
+    agent_mapping: Dict[str, int] = field(default_factory=dict)
+
     def to_dict(self):
         """Convert the Experiment to a dictionary."""
-        return asdict(self)
+        data = asdict(self)
+        # Remove non-serializable data
+        non_serializable = ['raw_data', 'processed_data', 'label_encoders', 'features', 'labels',
+                            'vectorizer', 'mlb', 'X_train', 'X_test', 'y_train', 'y_test',
+                            'best_params', 'model', 'evaluation_results', 'feature_importance',
+                            'quality_assessment']
+        for field in non_serializable:
+            if field in data:
+                data[field] = None
+        return data
 
     def to_json(self):
         """Convert the Experiment to a JSON string."""

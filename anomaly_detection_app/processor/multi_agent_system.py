@@ -3,13 +3,24 @@ import pandas as pd
 import numpy as np
 import time
 import json
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 
-from anomaly_detection_app.models.custom_llm_client import get_custom_llm, get_llm_callback
+from anomaly_detection_app.models.custom_llm_client import (
+    get_custom_llm,
+    get_llm_callback,
+)
+
 # Import our custom processing components
-from anomaly_detection_app.processor.data_processor import DataProcessor, FeatureEngineer
+from anomaly_detection_app.processor.data_processor import (
+    DataProcessor,
+    FeatureEngineer,
+)
 from anomaly_detection_app.processor.data_splitter import DataSplitter, GAOptimizer
-from anomaly_detection_app.processor.model_trainer import ModelTrainer, ModelEvaluator, save_model_artifacts
+from anomaly_detection_app.processor.model_trainer import (
+    ModelTrainer,
+    ModelEvaluator,
+    save_model_artifacts,
+)
 
 
 class MultiAgentSystem:
@@ -21,7 +32,10 @@ class MultiAgentSystem:
     def __init__(self, config_path, data_path, api_url=None):
         self.config_path = config_path
         self.data_path = data_path
-        self.api_url = api_url or "https://aiplatform.dev51.cbf.dev.paypalinc.com/seldon/seldon/mistral-7b-inst-624b0/v2/models/mistral-7b-inst-624b0/infer"
+        self.api_url = (
+            api_url
+            or "https://aiplatform.dev51.cbf.dev.paypalinc.com/seldon/seldon/mistral-7b-inst-624b0/v2/models/mistral-7b-inst-624b0/infer"
+        )
 
         # Load configuration
         self.config = self._load_config(config_path)
@@ -44,30 +58,13 @@ class MultiAgentSystem:
         self.evaluation_results = None
         self.feature_importance = None
 
-        # Get the custom LLM callback
-        self.llm_callback = self._get_llm_callback()
         # Create output folder
         self.output_path = os.path.join("model_output", f"run_{int(time.time())}")
         os.makedirs(self.output_path, exist_ok=True)
 
-    def _get_llm_callback(self):
-        """Get the custom LLM callback function"""
-        # Get model name from config if available, otherwise use default
-        model_name = self.config.get("llm_model_name", "mistral-7b-inst-2252b")
-
-        # Use the API URL if provided, otherwise use the default URL
-        api_url = self.api_url
-
-        # Log the LLM configuration
-        print(f"Using custom LLM: {model_name}")
-        print(f"API URL: {api_url}")
-
-        # Return the custom LLM callback
-        return get_llm_callback(api_url=api_url, model_name=model_name)
-
     def _load_config(self, config_path):
         """Load configuration from JSON file"""
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             return json.load(f)
 
     # In multi_agent_system.py
@@ -80,7 +77,7 @@ class MultiAgentSystem:
             task = Task(
                 description=f"Perform {agent_role} task for anomaly detection",
                 agent=agent,
-                expected_output=f"Results from {agent_role}"
+                expected_output=f"Results from {agent_role}",
             )
             tasks.append(task)
 
@@ -88,116 +85,134 @@ class MultiAgentSystem:
 
     def create_agents(self, api_url, model_name="mistral-7b-inst-2252b"):
         """Create all agents for the multi-agent system using custom LLM callback"""
-        # Get the custom LLM callback
-        llm_callback = get_llm_callback(api_url, model_name)
+        from openai import OpenAI
+
+        model_name = "mistral-7b-inst-624b0"
+        host_url = "aiplatform.dev51.cbf.dev.paypalinc.com"
+        # Modify OpenAI's API key and API base to use vLLM's API server.
+        openai_api_key = "EMPTY"
+        openai_api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
+        openai_api_base = (
+            "https://"
+            + host_url
+            + "/seldon/seldon/"
+            + model_name
+            + "/v2/models/"
+            + model_name
+        )
+        llm = LLM(
+            model="openai/" + model_name,
+            api_key=openai_api_key,
+            base_url=openai_api_base,
+        )
 
         # Data Understanding Agent
         data_understanding_agent = Agent(
             role="Data Understanding Specialist",
             goal="Analyze data and validate configuration compatibility",
-            backstory="You are an expert in financial data analysis with specialization in " +
-                      "anomaly detection. You understand the nuances of financial transaction " +
-                      "data and can quickly identify potential issues in data quality.",
+            backstory="You are an expert in financial data analysis with specialization in "
+            + "anomaly detection. You understand the nuances of financial transaction "
+            + "data and can quickly identify potential issues in data quality.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         # Data Preprocessing Agent
         data_preprocessing_agent = Agent(
             role="Data Preprocessing Engineer",
             goal="Transform raw data into processable format",
-            backstory="You are a skilled data engineer specialized in preparing financial data " +
-                      "for machine learning models. You excel at handling missing values, " +
-                      "transforming sequences, and implementing domain-specific rules.",
+            backstory="You are a skilled data engineer specialized in preparing financial data "
+            + "for machine learning models. You excel at handling missing values, "
+            + "transforming sequences, and implementing domain-specific rules.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         # Feature Engineering Agent
         feature_engineering_agent = Agent(
             role="Feature Engineering Specialist",
             goal="Create optimal features for anomaly detection",
-            backstory="You are an expert in creating machine learning features that capture " +
-                      "patterns in financial transaction data. You understand the importance " +
-                      "of sequence representations and can craft features that highlight " +
-                      "anomalous behavior.",
+            backstory="You are an expert in creating machine learning features that capture "
+            + "patterns in financial transaction data. You understand the importance "
+            + "of sequence representations and can craft features that highlight "
+            + "anomalous behavior.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         # Data Splitting Agent
         data_splitting_agent = Agent(
             role="Data Splitting Specialist",
             goal="Create optimal train/test splits with balanced anomaly ratios",
-            backstory="You are an expert in handling imbalanced datasets for anomaly detection. " +
-                      "You understand the importance of proper data splitting and can find the " +
-                      "optimal anomaly ratio for training effective models.",
+            backstory="You are an expert in handling imbalanced datasets for anomaly detection. "
+            + "You understand the importance of proper data splitting and can find the "
+            + "optimal anomaly ratio for training effective models.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=self.llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         # Model Optimization Agent
         model_optimization_agent = Agent(
             role="Model Optimization Specialist",
             goal="Find optimal model hyperparameters",
-            backstory="You are an expert in genetic algorithms and hyperparameter optimization. " +
-                      "You can efficiently navigate large parameter spaces to find the best " +
-                      "configuration for XGBoost models in anomaly detection.",
+            backstory="You are an expert in genetic algorithms and hyperparameter optimization. "
+            + "You can efficiently navigate large parameter spaces to find the best "
+            + "configuration for XGBoost models in anomaly detection.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         # Model Training Agent
         model_training_agent = Agent(
             role="Model Training Specialist",
             goal="Train robust anomaly detection models",
-            backstory="You are an expert in training machine learning models for financial " +
-                      "fraud detection. You understand the nuances of XGBoost and can ensure " +
-                      "models converge optimally without overfitting.",
+            backstory="You are an expert in training machine learning models for financial "
+            + "fraud detection. You understand the nuances of XGBoost and can ensure "
+            + "models converge optimally without overfitting.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         # Model Evaluation Agent
         model_evaluation_agent = Agent(
             role="Model Evaluation Specialist",
             goal="Evaluate model performance with appropriate metrics",
-            backstory="You are an expert in evaluating anomaly detection models in financial " +
-                      "domains. You understand the importance of both precision and recall in " +
-                      "fraud detection and can interpret complex performance metrics.",
+            backstory="You are an expert in evaluating anomaly detection models in financial "
+            + "domains. You understand the importance of both precision and recall in "
+            + "fraud detection and can interpret complex performance metrics.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         # Feature Analysis Agent
         feature_analysis_agent = Agent(
             role="Feature Analysis Specialist",
             goal="Analyze feature importance and suggest improvements",
-            backstory="You are an expert in interpreting machine learning models and understanding " +
-                      "feature contributions. You can identify the most important features for " +
-                      "anomaly detection and suggest improvements to feature engineering.",
+            backstory="You are an expert in interpreting machine learning models and understanding "
+            + "feature contributions. You can identify the most important features for "
+            + "anomaly detection and suggest improvements to feature engineering.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         # Quality Assessment Agent
         quality_assessment_agent = Agent(
             role="Quality Assessment Specialist",
             goal="Ensure the final model meets quality standards",
-            backstory="You are the final gatekeeper for model quality in financial fraud detection. " +
-                      "You have extensive experience in production machine learning systems and " +
-                      "can determine if a model is ready for deployment or needs further refinement.",
+            backstory="You are the final gatekeeper for model quality in financial fraud detection. "
+            + "You have extensive experience in production machine learning systems and "
+            + "can determine if a model is ready for deployment or needs further refinement.",
             verbose=True,
             allow_delegation=True,
-            custom_llm_callback=llm_callback  # Use custom LLM callback
+            llm=llm,  # Use custom LLM callback
         )
 
         return {
@@ -209,7 +224,7 @@ class MultiAgentSystem:
             "model_training": model_training_agent,
             "model_evaluation": model_evaluation_agent,
             "feature_analysis": feature_analysis_agent,
-            "quality_assessment": quality_assessment_agent
+            "quality_assessment": quality_assessment_agent,
         }
 
     def run_workflow(self):
@@ -220,10 +235,11 @@ class MultiAgentSystem:
         print(f"Using custom LLM with API URL: {self.api_url}")
 
         # Phase 1: CrewAI symbolic workflow (communication between agents)
-        agents = self.create_agents(self,
-                                    self.api_url
-                                    or "https://aiplatform.dev51.cbf.dev.paypalinc.com/seldon/seldon/mistral-7b-inst-624b0/v2/models/mistral-7b-inst-624b0/infer"
-                                    )
+        agents = self.create_agents(
+            self,
+            self.api_url
+            or "https://aiplatform.dev51.cbf.dev.paypalinc.com/seldon/seldon/mistral-7b-inst-624b0/v2/models/mistral-7b-inst-624b0/infer",
+        )
         tasks = self.create_tasks(agents)
 
         # Create crew
@@ -231,7 +247,7 @@ class MultiAgentSystem:
             agents=list(agents.values()),
             tasks=tasks,
             verbose=True,
-            process=Process.sequential
+            process=Process.sequential,
         )
 
         # Execute crew tasks (LLM-based agent communication)
@@ -267,16 +283,16 @@ class MultiAgentSystem:
             "model_training": None,
             "model_evaluation": None,
             "feature_analysis": None,
-            "quality_assessment": None
+            "quality_assessment": None,
         }
 
         try:
             # Step 1: Load and analyze data
             print("\n==== Loading and Analyzing Data ====")
             # Load data from data_path
-            if self.data_path.endswith('.csv'):
+            if self.data_path.endswith(".csv"):
                 self.raw_data = pd.read_csv(self.data_path)
-            elif self.data_path.endswith('.xlsx') or self.data_path.endswith('.xls'):
+            elif self.data_path.endswith(".xlsx") or self.data_path.endswith(".xls"):
                 self.raw_data = pd.read_excel(self.data_path)
             else:
                 raise ValueError(f"Unsupported file format: {self.data_path}")
@@ -288,35 +304,53 @@ class MultiAgentSystem:
                 "shape": self.raw_data.shape,
                 "columns": self.raw_data.columns.tolist(),
                 "missing_values": self.raw_data.isnull().sum().to_dict(),
-                "data_types": {col: str(dtype) for col, dtype in self.raw_data.dtypes.items()}
+                "data_types": {
+                    col: str(dtype) for col, dtype in self.raw_data.dtypes.items()
+                },
             }
 
-            if 'IS_ANOMALY' in self.raw_data.columns:
-                anomaly_count = self.raw_data['IS_ANOMALY'].sum()
+            if "IS_ANOMALY" in self.raw_data.columns:
+                anomaly_count = self.raw_data["IS_ANOMALY"].sum()
                 anomaly_ratio = anomaly_count / len(self.raw_data)
                 data_analysis["anomaly_count"] = int(anomaly_count)
                 data_analysis["anomaly_ratio"] = float(anomaly_ratio)
-                print(f"Anomaly ratio: {anomaly_ratio:.4f} ({anomaly_count} anomalies in {len(self.raw_data)} records)")
+                print(
+                    f"Anomaly ratio: {anomaly_ratio:.4f} ({anomaly_count} anomalies in {len(self.raw_data)} records)"
+                )
 
             results["data_understanding"] = data_analysis
 
             # Step 2: Process data
             print("\n==== Processing Data ====")
             processor = DataProcessor(self.config)
-            self.processed_data, self.label_encoders = processor.process_data(self.raw_data)
+            self.processed_data, self.label_encoders = processor.process_data(
+                self.raw_data
+            )
             print(f"Processed data shape: {self.processed_data.shape}")
 
             results["data_preprocessing"] = {
                 "processed_shape": self.processed_data.shape,
-                "new_columns": [col for col in self.processed_data.columns if col not in self.raw_data.columns],
-                "encoded_columns": [col for col in self.processed_data.columns if col.endswith('_encoded')],
-                "anomaly_columns": [col for col in self.processed_data.columns if '_anomaly_' in col]
+                "new_columns": [
+                    col
+                    for col in self.processed_data.columns
+                    if col not in self.raw_data.columns
+                ],
+                "encoded_columns": [
+                    col
+                    for col in self.processed_data.columns
+                    if col.endswith("_encoded")
+                ],
+                "anomaly_columns": [
+                    col for col in self.processed_data.columns if "_anomaly_" in col
+                ],
             }
 
             # Step 3: Feature engineering
             print("\n==== Engineering Features ====")
             engineer = FeatureEngineer(self.config)
-            self.vectorizer, self.mlb, self.features, feature_stats = engineer.create_features(self.processed_data)
+            self.vectorizer, self.mlb, self.features, feature_stats = (
+                engineer.create_features(self.processed_data)
+            )
 
             # Create feature names for later interpretation
             self.feature_names = []
@@ -328,7 +362,7 @@ class MultiAgentSystem:
                 if f"{col}_encoded" in self.processed_data.columns:
                     self.feature_names.append(f"cat_{col}")
 
-            if self.mlb and hasattr(self.mlb, 'classes_'):
+            if self.mlb and hasattr(self.mlb, "classes_"):
                 for cls in self.mlb.classes_:
                     self.feature_names.append(f"multi_{cls}")
 
@@ -341,8 +375,8 @@ class MultiAgentSystem:
                 self.feature_names.append(f"feature_{len(self.feature_names)}")
 
             # Get labels
-            if 'IS_ANOMALY' in self.processed_data.columns:
-                self.labels = self.processed_data['IS_ANOMALY'].values
+            if "IS_ANOMALY" in self.processed_data.columns:
+                self.labels = self.processed_data["IS_ANOMALY"].values
             else:
                 print("Warning: No target variable 'IS_ANOMALY' found in the data")
                 self.labels = np.zeros(self.features.shape[0])
@@ -353,11 +387,16 @@ class MultiAgentSystem:
             print("\n==== Splitting Data ====")
             splitter = DataSplitter(self.config)
             best_ratio, ratio_results = splitter.find_optimal_anomaly_ratio(
-                self.features, self.labels, test_size=0.2, ratios=[0.01, 0.05, 0.1, 0.15, 0.2]
+                self.features,
+                self.labels,
+                test_size=0.2,
+                ratios=[0.01, 0.05, 0.1, 0.15, 0.2],
             )
 
-            self.X_train, self.X_test, self.y_train, self.y_test = splitter.custom_train_test_split(
-                self.features, self.labels, test_size=0.2, anomaly_ratio=best_ratio
+            self.X_train, self.X_test, self.y_train, self.y_test = (
+                splitter.custom_train_test_split(
+                    self.features, self.labels, test_size=0.2, anomaly_ratio=best_ratio
+                )
             )
 
             results["data_splitting"] = {
@@ -366,7 +405,11 @@ class MultiAgentSystem:
                 "test_size": len(self.X_test),
                 "train_anomaly_ratio": float(np.mean(self.y_train)),
                 "test_anomaly_ratio": float(np.mean(self.y_test)),
-                "ratio_comparison": ratio_results.to_dict() if hasattr(ratio_results, 'to_dict') else None
+                "ratio_comparison": (
+                    ratio_results.to_dict()
+                    if hasattr(ratio_results, "to_dict")
+                    else None
+                ),
             }
 
             # Step 5: Optimize model
@@ -377,7 +420,7 @@ class MultiAgentSystem:
             results["model_optimization"] = {
                 "best_params": self.best_params,
                 "best_fitness": best_fitness,
-                "fitness_history": fitness_history
+                "fitness_history": fitness_history,
             }
 
             # Step 6: Train model
@@ -391,19 +434,23 @@ class MultiAgentSystem:
                 "model_type": "XGBoost",
                 "num_features": self.features.shape[1],
                 "best_iteration": self.model.best_iteration,
-                "best_score": self.model.best_score
+                "best_score": self.model.best_score,
             }
 
             # Step 7: Evaluate model
             print("\n==== Evaluating Model ====")
             evaluator = ModelEvaluator(self.config)
-            self.evaluation_results = evaluator.evaluate_model(self.model, self.X_test, self.y_test)
+            self.evaluation_results = evaluator.evaluate_model(
+                self.model, self.X_test, self.y_test
+            )
 
             # Find optimal threshold
-            threshold_results = evaluator.find_optimal_threshold(self.model, self.X_test, self.y_test)
+            threshold_results = evaluator.find_optimal_threshold(
+                self.model, self.X_test, self.y_test
+            )
 
             # Add threshold results to evaluation results
-            self.evaluation_results['optimal_thresholds'] = threshold_results
+            self.evaluation_results["optimal_thresholds"] = threshold_results
 
             results["model_evaluation"] = self.evaluation_results
 
@@ -418,9 +465,12 @@ class MultiAgentSystem:
             )
 
             results["feature_analysis"] = {
-                "top_features": self.feature_importance.to_dict() if hasattr(self.feature_importance,
-                                                                             'to_dict') else None,
-                "suggestions": feature_suggestions
+                "top_features": (
+                    self.feature_importance.to_dict()
+                    if hasattr(self.feature_importance, "to_dict")
+                    else None
+                ),
+                "suggestions": feature_suggestions,
             }
 
             # Step 9: Quality assessment
@@ -432,40 +482,49 @@ class MultiAgentSystem:
             # Save model artifacts
             print("\n==== Saving Model Artifacts ====")
             metrics = {
-                'roc_auc': self.evaluation_results['roc_auc'],
-                'pr_auc': self.evaluation_results['pr_auc'],
-                'optimal_threshold_f1': self.evaluation_results['optimal_thresholds']['f1_optimal'],
-                'optimal_threshold_f2': self.evaluation_results['optimal_thresholds']['f2_optimal'],
-                'anomaly_precision': self.evaluation_results['class_1']['precision'],
-                'anomaly_recall': self.evaluation_results['class_1']['recall'],
-                'anomaly_f1': self.evaluation_results['class_1']['f1'],
-                'classification_report': self.evaluation_results['classification_report'],
-                'confusion_matrix': self.evaluation_results['confusion_matrix'],
-                'interpretation': interpretation
+                "roc_auc": self.evaluation_results["roc_auc"],
+                "pr_auc": self.evaluation_results["pr_auc"],
+                "optimal_threshold_f1": self.evaluation_results["optimal_thresholds"][
+                    "f1_optimal"
+                ],
+                "optimal_threshold_f2": self.evaluation_results["optimal_thresholds"][
+                    "f2_optimal"
+                ],
+                "anomaly_precision": self.evaluation_results["class_1"]["precision"],
+                "anomaly_recall": self.evaluation_results["class_1"]["recall"],
+                "anomaly_f1": self.evaluation_results["class_1"]["f1"],
+                "classification_report": self.evaluation_results[
+                    "classification_report"
+                ],
+                "confusion_matrix": self.evaluation_results["confusion_matrix"],
+                "interpretation": interpretation,
             }
 
             artifact_paths = save_model_artifacts(
-                self.model, self.vectorizer, self.mlb, self.config,
-                self.label_encoders, metrics, self.output_path
+                self.model,
+                self.vectorizer,
+                self.mlb,
+                self.config,
+                self.label_encoders,
+                metrics,
+                self.output_path,
             )
 
             results["artifact_paths"] = artifact_paths
 
             # Save overall results
-            with open(os.path.join(self.output_path, 'results.json'), 'w') as f:
+            with open(os.path.join(self.output_path, "results.json"), "w") as f:
                 json.dump(self._make_json_serializable(results), f, indent=2)
 
         except Exception as e:
             import traceback
+
             error_trace = traceback.format_exc()
             print(f"Error in ML pipeline: {str(e)}")
             print(error_trace)
 
             # Record the error
-            results["error"] = {
-                "message": str(e),
-                "traceback": error_trace
-            }
+            results["error"] = {"message": str(e), "traceback": error_trace}
 
         return results
 
@@ -482,6 +541,6 @@ class MultiAgentSystem:
         elif isinstance(obj, np.floating):
             return float(obj)
         elif isinstance(obj, pd.DataFrame):
-            return obj.to_dict(orient='records')
+            return obj.to_dict(orient="records")
         else:
             return obj

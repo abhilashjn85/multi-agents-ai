@@ -17,12 +17,12 @@ class CustomLLMClient:
         self.headers = {"Content-Type": "application/json"}
 
     def chat(
-            self,
-            messages: List[Dict[str, str]],
-            max_tokens: Optional[int] = 1000,
-            temperature: float = 0.3,
-            streaming: bool = False,
-            **kwargs
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = 1000,
+        temperature: float = 0.3,
+        streaming: bool = False,
+        **kwargs,
     ) -> str:
         """
         Send a chat message to the internal LLM API and return the response.
@@ -39,7 +39,8 @@ class CustomLLMClient:
         """
         if streaming:
             print(
-                "Warning: Streaming is not supported in this custom LLM implementation. Falling back to non-streaming.")
+                "Warning: Streaming is not supported in this custom LLM implementation. Falling back to non-streaming."
+            )
 
         try:
             # Convert the messages list to a prompt string that the model can understand
@@ -80,7 +81,9 @@ class CustomLLMClient:
         # Join all parts with a space
         return " ".join(prompt_parts)
 
-    def execute_task(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.3) -> str:
+    def execute_task(
+        self, prompt: str, max_tokens: int = 1000, temperature: float = 0.3
+    ) -> str:
         """Execute a task using the LLM API"""
         try:
             response = requests.post(
@@ -91,7 +94,7 @@ class CustomLLMClient:
                         "extra": {
                             "temperature": temperature,
                             "max_new_tokens": max_tokens,
-                            "repetition_penalty": 1
+                            "repetition_penalty": 1,
                         }
                     },
                     "inputs": [
@@ -99,19 +102,21 @@ class CustomLLMClient:
                             "name": "input",
                             "shape": [1],
                             "datatype": "str",
-                            "data": [prompt]
+                            "data": [prompt],
                         }
-                    ]
+                    ],
                 },
-                timeout=60  # Set a timeout to avoid hanging
+                timeout=60,  # Set a timeout to avoid hanging
             )
 
             response.raise_for_status()
             response_data = response.json()
-            llm_response = response_data['outputs'][0]['data'][0]
+            llm_response = response_data["outputs"][0]["data"][0]
 
             print("\n--- LLM Response Preview ---")
-            print(llm_response[:500] + "..." if len(llm_response) > 500 else llm_response)
+            print(
+                llm_response[:500] + "..." if len(llm_response) > 500 else llm_response
+            )
             print("----------------------------\n")
 
             return llm_response
