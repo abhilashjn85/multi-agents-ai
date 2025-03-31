@@ -1,5 +1,8 @@
+# anomaly_detection_app/controllers/experiment_controller.py (Updated)
+
 import os
 import json
+import types
 import uuid
 import datetime
 import threading
@@ -8,20 +11,23 @@ import pandas as pd
 import numpy as np
 from anomaly_detection_app.models.experiment import Experiment, ExperimentConfig
 from anomaly_detection_app.models.workflow import Workflow
-
-# Import ML components for actual logic execution
 from anomaly_detection_app.processor.data_processor import DataProcessor, FeatureEngineer
 from anomaly_detection_app.processor.data_splitter import DataSplitter, GAOptimizer
 from anomaly_detection_app.processor.model_trainer import ModelTrainer, ModelEvaluator, save_model_artifacts
+from crewai import Agent, Task, Crew, Process, LLM
+from crewai.tools import BaseTool, tool
+from langchain.llms import OpenAI
+from pydantic import ConfigDict
+from typing import ClassVar, Any
 
-# Import our direct Mistral client
-from anomaly_detection_app.models.mistral_client import MistralClient, AgentRunner
+from anomaly_detection_app.tools.custom_tools import ModelSaverTool, QualityAssessmentTool, FeatureAnalyzerTool, \
+    ModelOptimizerTool, ModelTrainerTool, ModelEvaluatorTool, DataSplitterTool, FeatureEngineeringTool, \
+    DataProcessorTool, DataLoaderTool
 
 
 class ExperimentController:
     """
-    Controller for managing experiments using direct Mistral API calls
-    and executing the actual ML pipeline.
+    Controller for managing experiments using CrewAI agents.
     """
 
     def __init__(self, app_config):
@@ -35,9 +41,10 @@ class ExperimentController:
         self.agent_controller = None
         self.workflow_controller = None
 
-        # Get the LLM API URL from configuration
-        self.llm_api_url = app_config.get('LLM_API_URL',
-                                          'https://aiplatform.dev51.cbf.dev.paypalinc.com/seldon/seldon/mistral-7b-inst-2252b/v2/models/mistral-7b-inst-2252b/infer')
+        # Get the LLM API URL and model from configuration
+        self.llm_api_url = app_config.get('LLM_API_URL', 'https://api.openai.com/v1')
+        self.llm_api_key = app_config.get('LLM_API_KEY', '')
+        self.model_name = app_config.get('DEFAULT_MODEL_NAME', 'gpt-4-0125-preview')
 
         # Load default configuration
         self._load_default_config()
@@ -158,9 +165,6 @@ class ExperimentController:
         self.experiments[experiment_id] = experiment
         return experiment.to_dict()
 
-    # [standard methods for config and experiment management]
-    # ... all the standard methods remain unchanged ...
-
     def run_experiment(self, experiment_id):
         """Run an experiment in a background thread."""
         if experiment_id not in self.experiments:
@@ -192,59 +196,18 @@ class ExperimentController:
             workflow_id = experiment.workflow_id
             config_id = experiment.config_id
 
-            # Check if workflow and config exist in their respective controllers
-            # For a real implementation, this would access the controllers directly
-            # For now, we'll simulate the workflow execution
-
-            # Load the original code components dynamically
-            self.run_actual_experiment(experiment, self.agent_controller, self.workflow_controller)
-            # self._simulate_experiment_run(experiment)
-        except Exception as e:
-            experiment.update_status("failed")
-            experiment.add_log_entry(
-                f"Error running experiment: {str(e)}", level="ERROR"
-            )
-
-    def run_actual_experiment(self, experiment, agent_controller, workflow_controller):
-        """
-        Run the actual experiment using direct Mistral API calls AND the ML pipeline.
-        """
-        try:
-            # Update experiment status
-            experiment.update_status("running", 0.1, "initialization", "")
-            experiment.add_log_entry("Starting experiment using direct Mistral API", level="INFO")
-
-            # Get the workflow and config
-            workflow_dict = workflow_controller.get_workflow(experiment.workflow_id)
-            config_dict = self.get_config(experiment.config_id)
-
-            if not workflow_dict or not config_dict:
+            # Check if workflow and config exist
+            if not self.workflow_controller.get_workflow(workflow_id) or not self.get_config(config_id):
                 experiment.update_status("failed")
                 experiment.add_log_entry("Workflow or config not found", level="ERROR")
                 return
 
-            # Save config to a temporary file
-            config_path = os.path.join(experiment.output_path, "config.json")
-            with open(config_path, 'w') as f:
-                json.dump(config_dict, f, indent=2)
+            # Run the experiment using CrewAI agents
+            experiment.add_log_entry("Starting the experiment using CrewAI agents", level="INFO")
+            results = self._run_agent_experiment(experiment)
 
-            experiment.add_log_entry(f"Using data path: {experiment.data_path}", level="INFO")
-            experiment.add_log_entry(f"Config saved to: {config_path}", level="INFO")
-
-            # PHASE 1: Run agent dialogue using direct Mistral API
-            agent_results = self._run_agent_dialogue(experiment, agent_controller, workflow_controller)
-
-            # PHASE 2: Execute the actual ML pipeline
-            ml_results = self._execute_ml_pipeline(experiment, config_dict)
-
-            # Combine results
-            combined_results = {
-                "agent_dialogue": agent_results,
-                "ml_pipeline": ml_results
-            }
-
-            # Store the combined results
-            experiment.results = combined_results
+            # Store the results
+            experiment.results = results
 
             # Update final status
             experiment.update_status("completed", 1.0, "completed", "")
@@ -252,441 +215,626 @@ class ExperimentController:
 
         except Exception as e:
             experiment.update_status("failed")
-            experiment.add_log_entry(f"Error running experiment: {str(e)}", level="ERROR")
+            experiment.add_log_entry(
+                f"Error running experiment: {str(e)}", level="ERROR"
+            )
             import traceback
             experiment.add_log_entry(traceback.format_exc(), level="ERROR")
 
-    def _run_agent_dialogue(self, experiment, agent_controller, workflow_controller):
-        """Run the agent dialogue part with direct Mistral API calls"""
+    def _run_agent_experiment(self, experiment):
+        """
+        Run the experiment using CrewAI agents that handle both planning and execution.
+        """
         try:
-            experiment.update_status("running", 0.2, "agent_dialogue", "")
-            experiment.add_log_entry("Running agent dialogue", level="INFO")
+            # Update experiment status
+            experiment.update_status("running", 0.1, "agent_setup", "")
+            experiment.add_log_entry("Initializing CrewAI agents", level="INFO")
 
-            # Get LLM API URL
-            llm_api_url = self.llm_api_url
+            # Get the workflow and config
+            workflow_dict = self.workflow_controller.get_workflow(experiment.workflow_id)
+            config_dict = self.get_config(experiment.config_id)
 
-            # Create our direct agent runner
-            agent_runner = AgentRunner(llm_api_url)
+            if not workflow_dict or not config_dict:
+                experiment.update_status("failed")
+                experiment.add_log_entry("Workflow or config not found", level="ERROR")
+                return {"error": "Workflow or config not found"}
 
-            # Get the agents and tasks from the workflow
-            workflow = workflow_controller.workflows.get(experiment.workflow_id)
-            if not workflow:
-                experiment.add_log_entry(f"Workflow {experiment.workflow_id} not found", level="ERROR")
-                return {"error": "Workflow not found"}
+            # Save config to a file in the output directory
+            config_path = os.path.join(experiment.output_path, "config.json")
+            with open(config_path, 'w') as f:
+                json.dump(config_dict, f, indent=2)
 
-            # Convert workflow tasks to our format
-            workflow_tasks = []
-            for task_def in workflow.tasks:
-                agent_info = agent_controller.get_agent(task_def.agent_id)
-                if agent_info:
-                    task_info = {
-                        "role": agent_info['role'],
-                        "goal": agent_info['goal'],
-                        "task": task_def.description,
-                        "backstory": agent_info.get('backstory', '')
-                    }
-                    workflow_tasks.append(task_info)
+            experiment.add_log_entry(f"Using data path: {experiment.data_path}", level="INFO")
+            experiment.add_log_entry(f"Config saved to: {config_path}", level="INFO")
+            # Control CrewAI behavior
+            os.environ["CREWAI_TIMEOUT"] = "30"
+            os.environ["CREWAI_MAX_TOOL_ATTEMPTS"] = "2"
+            os.environ["CREWAI_STRICT_FORMAT"] = "False"
 
-            if not workflow_tasks:
-                experiment.add_log_entry("No tasks defined for the workflow", level="ERROR")
-                return {"error": "No tasks defined"}
+            tools = self._create_tools(experiment, config_dict)
 
-            # Add data context to the first task
-            if workflow_tasks and experiment.data_path:
-                # Create a data context string
-                data_context = f"The data file is located at: {experiment.data_path}\n"
-                if os.path.exists(experiment.data_path):
-                    try:
-                        if experiment.data_path.endswith('.csv'):
-                            # Try to read the first few rows for context
-                            df = pd.read_csv(experiment.data_path, nrows=5)
-                            data_context += f"Data sample (first 5 rows):\n{df.to_string()}\n\n"
-                            data_context += f"Data columns: {', '.join(df.columns)}\n"
-                            data_context += f"Data shape: {df.shape[0]} rows, {df.shape[1]} columns\n"
-                    except Exception as e:
-                        data_context += f"Could not read data file: {str(e)}\n"
+            # Create agents based on the workflow
+            agents = self._create_agents(experiment, workflow_dict, tools)
 
-                workflow_tasks[0]['task'] = data_context + "\n" + workflow_tasks[0]['task']
+            # Set all agents to not allow delegation if it's causing problems
+            for agent in agents:
+                agent.allow_delegation = False
 
-            # Run each task and update progress
-            agent_results = {}
-            for i, task_info in enumerate(workflow_tasks):
-                agent_role = task_info['role']
-                progress = 0.2 + (i / len(workflow_tasks) * 0.3)  # Use 30% of progress bar for dialogue
-                experiment.update_status("running", progress, f"agent_dialogue_{i + 1}", agent_role)
-                experiment.add_log_entry(f"Running agent dialogue {i + 1}: {agent_role}", level="INFO",
-                                         agent=agent_role)
+            # Create tasks based on the workflow
+            tasks = self._create_tasks(experiment, workflow_dict, agents)
 
-                # Run the task
-                try:
-                    result = agent_runner.run_task(
-                        task_info['role'],
-                        task_info['goal'],
-                        task_info['task'],
-                        task_info.get('backstory', '')
-                    )
-                    agent_results[i] = {
-                        "role": agent_role,
-                        "task": task_info['task'],
-                        "response": result
-                    }
-                    experiment.add_log_entry(f"Agent dialogue {i + 1} completed", level="INFO", agent=agent_role)
-                    experiment.add_log_entry(f"Result: {result[:500]}...", level="INFO", agent=agent_role)
-                except Exception as e:
-                    experiment.add_log_entry(f"Error in agent dialogue {i + 1}: {str(e)}", level="ERROR",
-                                             agent=agent_role)
-                    agent_results[i] = {
-                        "role": agent_role,
-                        "task": task_info['task'],
-                        "error": str(e)
-                    }
+            for i in range(1, len(tasks)):
+                prev_task = tasks[i - 1]
+                if prev_task not in tasks[i].context:
+                    tasks[i].context.append(prev_task)
 
-            experiment.add_log_entry("Agent dialogue phase completed", level="INFO")
-            return agent_results
+            # Create and run the crew
+            crew = Crew(
+                agents=agents,
+                tasks=tasks,
+                verbose=True,
+                process=Process.sequential
+            )
+
+            # Run the crew
+            experiment.add_log_entry("Starting CrewAI execution", level="INFO")
+            results = crew.kickoff()
+
+            # Return the results
+            experiment.add_log_entry("CrewAI execution completed", level="INFO")
+            return {
+                "agent_results": results,
+                "metadata": {
+                    "model_path": os.path.join(experiment.output_path, "xgboost_model.json"),
+                    "config_path": config_path,
+                    "output_path": experiment.output_path
+                }
+            }
 
         except Exception as e:
-            experiment.add_log_entry(f"Error in agent dialogue: {str(e)}", level="ERROR")
+            experiment.update_status("failed")
+            experiment.add_log_entry(f"Error in agent experiment: {str(e)}", level="ERROR")
             import traceback
             experiment.add_log_entry(traceback.format_exc(), level="ERROR")
             return {"error": str(e)}
 
-    def _execute_ml_pipeline(self, experiment, config_dict):
-        """Execute the actual ML pipeline with real anomaly detection logic"""
-        try:
-            experiment.update_status("running", 0.5, "ml_pipeline", "")
-            experiment.add_log_entry("Starting ML pipeline execution", level="INFO")
+    def _create_tools(self, experiment, config_dict):
+        """Create tools for the agents based on ML components"""
+        from anomaly_detection_app.processor.data_processor import DataProcessor, FeatureEngineer
+        from anomaly_detection_app.processor.data_splitter import DataSplitter, GAOptimizer
+        from anomaly_detection_app.processor.model_trainer import ModelTrainer, ModelEvaluator, save_model_artifacts
 
-            # Initialize result dictionary
-            results = {
-                "data_understanding": None,
-                "data_preprocessing": None,
-                "feature_engineering": None,
-                "data_splitting": None,
-                "model_optimization": None,
-                "model_training": None,
-                "model_evaluation": None,
-                "feature_analysis": None,
-                "quality_assessment": None
-            }
+        # Store the config in the experiment for tools to access
+        experiment.config_dict = config_dict
 
-            # Initialize state variables for ML pipeline
-            raw_data = None
-            processed_data = None
-            label_encoders = {}
-            features = None
-            labels = None
-            vectorizer = None
-            mlb = None
-            feature_names = []
-            X_train = None
-            X_test = None
-            y_train = None
-            y_test = None
-            best_params = None
-            model = None
-            evaluation_results = None
-            feature_importance = None
+        # Create tool instances
+        return {
+            "data_loader": DataLoaderTool(experiment=experiment),
+            "data_processor": DataProcessorTool(
+                experiment=experiment,
+                config=config_dict,
+                processor_class=DataProcessor
+            ),
+            "feature_engineer": FeatureEngineeringTool(
+                experiment=experiment,
+                config=config_dict,
+                engineer_class=FeatureEngineer
+            ),
+            "data_splitter": DataSplitterTool(
+                experiment=experiment,
+                config=config_dict,
+                splitter_class=DataSplitter
+            ),
+            "model_optimizer": ModelOptimizerTool(
+                experiment=experiment,
+                config=config_dict,
+                optimizer_class=GAOptimizer
+            ),
+            "model_trainer": ModelTrainerTool(
+                experiment=experiment,
+                config=config_dict,
+                trainer_class=ModelTrainer
+            ),
+            "model_evaluator": ModelEvaluatorTool(
+                experiment=experiment,
+                config=config_dict,
+                evaluator_class=ModelEvaluator
+            ),
+            "feature_analyzer": FeatureAnalyzerTool(
+                experiment=experiment,
+                config=config_dict,
+                engineer_class=FeatureEngineer
+            ),
+            "quality_assessor": QualityAssessmentTool(
+                experiment=experiment,
+                config=config_dict,
+                evaluator_class=ModelEvaluator
+            ),
+            "model_saver": ModelSaverTool(
+                experiment=experiment,
+                save_function=save_model_artifacts
+            )
+        }
 
-            # Step 1: Load and analyze data
-            experiment.update_status("running", 0.55, "data_loading", "Data Understanding Specialist")
-            experiment.add_log_entry("Loading and analyzing data", level="INFO", agent="Data Understanding Specialist")
+    def _create_agents(self, experiment, workflow_dict, tools):
+        """Create agents based on workflow"""
+        agents = []
+        agent_mapping = {}
+        model_name = "mistral-7b-inst-624b0"
+        host_url = "aiplatform.dev51.cbf.dev.paypalinc.com"
+        # Modify OpenAI's API key and API base to use vLLM's API server.
+        openai_api_key = "EMPTY"
+        openai_api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
+        os.environ["CREWAI_TIMEOUT"] = "30"
+        os.environ["CREWAI_MAX_TOOL_ATTEMPTS"] = "2"
+        os.environ["CREWAI_STRICT_FORMAT"] = "False"
+        openai_api_base = (
+                "https://"
+                + host_url
+                + "/seldon/seldon/"
+                + model_name
+                + "/v2/models/"
+                + model_name
+        )
+        llm = LLM(
+            model="openai/" + model_name,
+            api_key=openai_api_key,
+            base_url=openai_api_base
+        )
 
-            try:
-                # Load data
-                if experiment.data_path.endswith('.csv'):
-                    raw_data = pd.read_csv(experiment.data_path)
-                elif experiment.data_path.endswith('.xlsx') or experiment.data_path.endswith('.xls'):
-                    raw_data = pd.read_excel(experiment.data_path)
-                else:
-                    raise ValueError(f"Unsupported file format: {experiment.data_path}")
+        # Add manager agent
+        manager_agent = Agent(
+            role="Senior Data Scientist",
+            goal="Oversee and coordinate the anomaly detection process",
+            backstory="You are an experienced data science team lead with expertise in anomaly detection. "
+                      "You coordinate specialists and make high-level decisions about the model development process.",
+            verbose=True,
+            allow_delegation=False,
+            llm=llm
+        )
+        agents.append(manager_agent)
+        agent_mapping["manager"] = 0
 
-                # Basic data analysis
-                data_analysis = {
-                    "shape": raw_data.shape,
-                    "columns": raw_data.columns.tolist(),
-                    "missing_values": raw_data.isnull().sum().to_dict(),
-                    "data_types": {col: str(dtype) for col, dtype in raw_data.dtypes.items()}
-                }
+        # Add specialized agents based on workflow
+        for agent_id in workflow_dict.get('agent_ids', []):
+            agent_info = self.agent_controller.get_agent(agent_id)
+            if agent_info:
+                agent_tools = []
 
-                if 'IS_ANOMALY' in raw_data.columns:
-                    anomaly_count = raw_data['IS_ANOMALY'].sum()
-                    anomaly_ratio = anomaly_count / len(raw_data)
-                    data_analysis["anomaly_count"] = int(anomaly_count)
-                    data_analysis["anomaly_ratio"] = float(anomaly_ratio)
-                    experiment.add_log_entry(
-                        f"Anomaly ratio: {anomaly_ratio:.4f} ({anomaly_count} anomalies in {len(raw_data)} records)",
-                        level="INFO", agent="Data Understanding Specialist")
+                # Assign tools based on agent role
+                if "Data Understanding" in agent_info['role']:
+                    agent_tools = [tools["data_loader"]]
+                elif "Preprocessing" in agent_info['role']:
+                    agent_tools = [tools["data_processor"]]
+                elif "Feature Engineering" in agent_info['role']:
+                    agent_tools = [tools["feature_engineer"]]
+                elif "Data Splitting" in agent_info['role']:
+                    agent_tools = [tools["data_splitter"]]
+                elif "Model Optimization" in agent_info['role']:
+                    agent_tools = [tools["model_optimizer"]]
+                elif "Model Training" in agent_info['role']:
+                    agent_tools = [tools["model_trainer"]]
+                elif "Model Evaluation" in agent_info['role']:
+                    agent_tools = [tools["model_evaluator"]]
+                elif "Feature Analysis" in agent_info['role']:
+                    agent_tools = [tools["feature_analyzer"]]
+                elif "Quality Assessment" in agent_info['role']:
+                    agent_tools = [tools["quality_assessor"]]
 
-                results["data_understanding"] = data_analysis
-                experiment.add_log_entry(f"Data loaded with shape: {raw_data.shape}", level="INFO",
-                                         agent="Data Understanding Specialist")
-            except Exception as e:
-                experiment.add_log_entry(f"Error loading data: {str(e)}", level="ERROR")
-                results["data_understanding"] = {"error": str(e)}
-                return results
-
-            # Step 2: Process data
-            experiment.update_status("running", 0.6, "data_preprocessing", "Data Preprocessing Engineer")
-            experiment.add_log_entry("Processing data", level="INFO", agent="Data Preprocessing Engineer")
-
-            try:
-                processor = DataProcessor(config_dict)
-                processed_data, label_encoders = processor.process_data(raw_data)
-
-                results["data_preprocessing"] = {
-                    "processed_shape": processed_data.shape,
-                    "new_columns": [col for col in processed_data.columns if col not in raw_data.columns],
-                    "encoded_columns": [col for col in processed_data.columns if col.endswith('_encoded')],
-                    "anomaly_columns": [col for col in processed_data.columns if '_anomaly_' in col]
-                }
-
-                experiment.add_log_entry(f"Data processed with shape: {processed_data.shape}", level="INFO",
-                                         agent="Data Preprocessing Engineer")
-            except Exception as e:
-                experiment.add_log_entry(f"Error processing data: {str(e)}", level="ERROR")
-                results["data_preprocessing"] = {"error": str(e)}
-                return results
-
-            # Step 3: Feature engineering
-            experiment.update_status("running", 0.65, "feature_engineering", "Feature Engineering Specialist")
-            experiment.add_log_entry("Engineering features", level="INFO", agent="Feature Engineering Specialist")
-
-            try:
-                engineer = FeatureEngineer(config_dict)
-                vectorizer, mlb, features, feature_stats = engineer.create_features(processed_data)
-
-                # Create feature names for later interpretation
-                feature_names = []
-                if vectorizer:
-                    vocab = vectorizer.get_feature_names_out()
-                    feature_names.extend([f"tfidf_{word}" for word in vocab])
-
-                for col in config_dict["categorical_columns"]:
-                    if f"{col}_encoded" in processed_data.columns:
-                        feature_names.append(f"cat_{col}")
-
-                if mlb and hasattr(mlb, 'classes_'):
-                    for cls in mlb.classes_:
-                        feature_names.append(f"multi_{cls}")
-
-                for col in processed_data.columns:
-                    if "_anomaly_" in col:
-                        feature_names.append(col)
-
-                # Make sure we have enough feature names
-                while len(feature_names) < features.shape[1]:
-                    feature_names.append(f"feature_{len(feature_names)}")
-
-                # Get labels
-                if 'IS_ANOMALY' in processed_data.columns:
-                    labels = processed_data['IS_ANOMALY'].values
-                else:
-                    experiment.add_log_entry("Warning: No target variable 'IS_ANOMALY' found in the data",
-                                             level="WARNING")
-                    labels = np.zeros(features.shape[0])
-
-                results["feature_engineering"] = feature_stats
-                experiment.add_log_entry(f"Features created with shape: {features.shape}", level="INFO",
-                                         agent="Feature Engineering Specialist")
-            except Exception as e:
-                experiment.add_log_entry(f"Error engineering features: {str(e)}", level="ERROR")
-                results["feature_engineering"] = {"error": str(e)}
-                return results
-
-            # Step 4: Split data
-            experiment.update_status("running", 0.7, "data_splitting", "Data Splitting Specialist")
-            experiment.add_log_entry("Splitting data", level="INFO", agent="Data Splitting Specialist")
-
-            try:
-                splitter = DataSplitter(config_dict)
-                best_ratio, ratio_results = splitter.find_optimal_anomaly_ratio(
-                    features, labels, test_size=0.2, ratios=[0.01, 0.05, 0.1, 0.15, 0.2]
+                agent = Agent(
+                    role=agent_info['role'],
+                    goal=agent_info['goal'],
+                    backstory=agent_info.get('backstory', ''),
+                    verbose=agent_info.get('verbose', False),
+                    allow_delegation=agent_info.get('allow_delegation', False),
+                    llm=llm,
+                    tools=agent_tools
                 )
+                agents.append(agent)
+                agent_mapping[agent_id] = len(agents) - 1  # Store index in agents list
 
-                X_train, X_test, y_train, y_test = splitter.custom_train_test_split(
-                    features, labels, test_size=0.2, anomaly_ratio=best_ratio
+                # Ensure we have the agent for saving artifacts
+            if not any("Model Saver" in agent.role for agent in agents):
+                save_agent = Agent(
+                    role="Model Deployment Specialist",
+                    goal="Save model artifacts and ensure they're properly stored",
+                    backstory="You are an expert in model deployment and artifact management. Your "
+                              "responsibility is to ensure all model components are properly saved and documented.",
+                    verbose=True,
+                    allow_delegation=False,
+                    llm=llm,
+                    tools=[tools["model_saver"]]
                 )
+                agents.append(save_agent)
+                agent_mapping["model_saver"] = len(agents) - 1
 
-                results["data_splitting"] = {
-                    "best_anomaly_ratio": best_ratio,
-                    "train_size": len(X_train),
-                    "test_size": len(X_test),
-                    "train_anomaly_ratio": float(np.mean(y_train)),
-                    "test_anomaly_ratio": float(np.mean(y_test))
-                }
+                # Update experiment with agent mapping for logging purposes
+            experiment.agent_mapping = agent_mapping
 
-                experiment.add_log_entry(f"Best anomaly ratio: {best_ratio}", level="INFO",
-                                         agent="Data Splitting Specialist")
-            except Exception as e:
-                experiment.add_log_entry(f"Error splitting data: {str(e)}", level="ERROR")
-                results["data_splitting"] = {"error": str(e)}
-                return results
+        return agents
 
-            # Step 5: Optimize model
-            experiment.update_status("running", 0.75, "model_optimization", "Model Optimization Specialist")
-            experiment.add_log_entry("Optimizing model parameters", level="INFO", agent="Model Optimization Specialist")
+    def _create_tasks(self, experiment, workflow_dict, agents):
+        """Create tasks based on workflow without a manager agent"""
+        tasks = []
 
-            try:
-                optimizer = GAOptimizer(config_dict, X_train, y_train)
-                best_params, best_fitness, fitness_history = optimizer.optimize()
+        # Find the Data Understanding Specialist to act as the lead agent for the first task
+        lead_agent_index = next((i for i, agent in enumerate(agents)
+                                 if "data understanding" in agent.role.lower()), 0)
 
-                results["model_optimization"] = {
-                    "best_params": best_params,
-                    "best_fitness": best_fitness
-                }
+        # Create an initial planning task
+        planning_task = Task(
+            description=f"""
+            Create a detailed execution plan for anomaly detection on financial transaction data.
+            The data is located at {experiment.data_path}.
 
-                experiment.add_log_entry(f"Best fitness: {best_fitness:.4f}", level="INFO",
-                                         agent="Model Optimization Specialist")
-            except Exception as e:
-                experiment.add_log_entry(f"Error optimizing model: {str(e)}", level="ERROR")
-                results["model_optimization"] = {"error": str(e)}
-                return results
+            Your plan should include:
+            1. Data understanding and preparation approach
+            2. Feature engineering strategy
+            3. Model selection and hyperparameter optimization
+            4. Evaluation criteria and quality assessment
 
-            # Step 6: Train model
-            experiment.update_status("running", 0.8, "model_training", "Model Training Specialist")
-            experiment.add_log_entry("Training model", level="INFO", agent="Model Training Specialist")
+            This plan will guide the entire anomaly detection process.
+            
+            TOOL INFORMATION:
+            - Tool name: data_loader
+            - Required parameter: data_path (string)
+    
+            Example usage:
+            Action: data_loader
+            Action Input: {{"data_path": "{experiment.data_path}"}}
+    
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available.
+    
+            """,
+            agent=agents[lead_agent_index],
+            expected_output="A comprehensive execution plan for anomaly detection"
+        )
+        tasks.append(planning_task)
 
-            try:
-                trainer = ModelTrainer(config_dict)
-                model = trainer.train_model(X_train, y_train, best_params, X_test, y_test)
+        # Create data understanding task (continuation of planning)
+        data_understanding_task = Task(
+            description=f"""
+            Create a detailed execution plan for anomaly detection on financial transaction data.
+    The data is located at {experiment.data_path}.
+    
+    Your plan should include:
+    1. Data understanding and preparation approach
+    2. Feature engineering strategy
+    3. Model selection and hyperparameter optimization
+    4. Evaluation criteria and quality assessment
+    
+    This plan will guide the entire anomaly detection process.
+    
+    TOOL INFORMATION:
+    - You can use data_loader to load the data
+    - Required parameter: data_path (string)
+    
+    IMPORTANT FORMAT INSTRUCTIONS:
+    - ONLY use the data_loader tool once to get the data
+    - After loading the data, provide your final answer
+    - Do NOT try to use the tool again after you've used it once
+    - Follow EXACTLY this format:
+    
+    Thought: [your thinking process]
+    Action: data_loader
+    Action Input: {{"data_path": "{experiment.data_path}"}}
+    
+    Then after seeing the results:
+    
+    Thought: I now have the data and can create the execution plan
+    Final Answer: [your complete execution plan]
+    """,
+            agent=agents[self.get_agent_index(agents, "data understanding")],
+            expected_output="Data analysis report with preprocessing recommendations",
+            context=[planning_task]
+        )
+        tasks.append(data_understanding_task)
 
-                results["model_training"] = {
-                    "model_type": "XGBoost",
-                    "num_features": features.shape[1],
-                    "best_iteration": model.best_iteration,
-                    "best_score": model.best_score
-                }
+        # Create data preprocessing task
+        data_preprocessing_task = Task(
+            description=f"""
+            Process the raw data according to configuration based on the data understanding report.
 
-                experiment.add_log_entry(f"Model trained, best score: {model.best_score:.4f}",
-                                         level="INFO", agent="Model Training Specialist")
-            except Exception as e:
-                experiment.add_log_entry(f"Error training model: {str(e)}", level="ERROR")
-                results["model_training"] = {"error": str(e)}
-                return results
+            Your task:
+            1. Apply the configuration rules to the data
+            2. Handle missing values
+            3. Process sequences
+            4. Report on the preprocessing results
 
-            # Step 7: Evaluate model
-            experiment.update_status("running", 0.85, "model_evaluation", "Model Evaluation Specialist")
-            experiment.add_log_entry("Evaluating model", level="INFO", agent="Model Evaluation Specialist")
+            IMPORTANT INSTRUCTIONS:
+            - You have EXACTLY ONE tool available: "data_processor"
+            - You MUST use the tool exactly as shown below:
+    
+            Action: data_processor
+            Action Input: {{}}
+    
+            - Do NOT try to use any other tools
+            - Do NOT change the tool name
+            - Do NOT add parameters to the tool name
+    
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available.
+            """,
+            agent=agents[self.get_agent_index(agents, "preprocessing")],
+            expected_output="Processed data report",
+            context=[data_understanding_task]
+        )
+        tasks.append(data_preprocessing_task)
 
-            try:
-                evaluator = ModelEvaluator(config_dict)
-                evaluation_results = evaluator.evaluate_model(model, X_test, y_test)
+        # Create feature engineering task
+        feature_engineering_task = Task(
+            description=f"""
+            Create features for the model based on the processed data.
 
-                # Find optimal threshold
-                threshold_results = evaluator.find_optimal_threshold(model, X_test, y_test)
+            Your task:
+            1. Create TF-IDF features from sequences
+            2. Handle categorical features
+            3. Create features from anomaly rules
+            4. Report on the feature engineering results
+            
+            TOOL INFORMATION:
+            - Tool name: feature_engineer
+            - No parameters needed
+            
+            Example usage:
+            Action: feature_engineer
+            Action Input: {{}}
+            
+            Note: If you encounter errors after a few attempts, please provide your best analysis with the information available.
+            Do NOT modify the tool name by adding parameters to it like "feature_engineer(sequence)". 
+            The tool name must be exactly "feature_engineer" and the input must be an empty JSON object.
+            """,
+            agent=agents[self.get_agent_index(agents, "feature engineering")],
+            expected_output="Feature engineering report",
+            context=[data_preprocessing_task]
+        )
+        tasks.append(feature_engineering_task)
 
-                # Add threshold results to evaluation results
-                evaluation_results['optimal_thresholds'] = threshold_results
+        # Create data splitting task
+        data_splitting_task = Task(
+            description=f"""
+            Split the data into training and testing sets with optimal anomaly ratio.
 
-                results["model_evaluation"] = {
-                    "roc_auc": evaluation_results['roc_auc'],
-                    "pr_auc": evaluation_results['pr_auc'],
-                    "anomaly_precision": evaluation_results['class_1']['precision'],
-                    "anomaly_recall": evaluation_results['class_1']['recall'],
-                    "anomaly_f1": evaluation_results['class_1']['f1'],
-                    "optimal_threshold_f1": evaluation_results['optimal_thresholds']['f1_optimal'],
-                    "optimal_threshold_f2": evaluation_results['optimal_thresholds']['f2_optimal']
-                }
+            Your task:
+            1. Find the optimal anomaly ratio for training
+            2. Create balanced train/test splits
+            3. Report on the data splitting statistics
 
-                experiment.add_log_entry(
-                    f"ROC-AUC: {evaluation_results['roc_auc']:.4f}, PR-AUC: {evaluation_results['pr_auc']:.4f}",
-                    level="INFO", agent="Model Evaluation Specialist")
-            except Exception as e:
-                experiment.add_log_entry(f"Error evaluating model: {str(e)}", level="ERROR")
-                results["model_evaluation"] = {"error": str(e)}
-                return results
+            TOOL INFORMATION:
+            - Tool name: data_splitter
+            - No additional parameters needed
+    
+            Example usage:
+            Action: data_splitter
+            Action Input: {{}}
+    
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available.
+            """,
+            agent=agents[self.get_agent_index(agents, "data splitting")],
+            expected_output="Data splitting report",
+            context=[feature_engineering_task]
+        )
+        tasks.append(data_splitting_task)
 
-            # Step 8: Analyze feature importance
-            experiment.update_status("running", 0.9, "feature_analysis", "Feature Analysis Specialist")
-            experiment.add_log_entry("Analyzing feature importance", level="INFO", agent="Feature Analysis Specialist")
+        # Create model optimization task
+        model_optimization_task = Task(
+            description=f"""
+            Find optimal hyperparameters for the XGBoost model using genetic algorithm.
 
-            try:
-                feature_importance = engineer.analyze_feature_importance(model, feature_names, top_n=20)
-                feature_suggestions = engineer.suggest_features(processed_data, feature_importance)
+            Your task:
+            1. Run genetic algorithm optimization
+            2. Evaluate different parameter combinations
+            3. Report on the best parameters found
 
-                results["feature_analysis"] = {
-                    "top_features": feature_importance.to_dict() if hasattr(feature_importance, 'to_dict') else None,
-                    "suggestions": feature_suggestions
-                }
+            TOOL INFORMATION:
+            - Tool name: model_optimizer
+            - No additional parameters needed
+    
+            Example usage:
+            Action: model_optimizer
+            Action Input: {{}}
+    
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available.
+            """,
+            agent=agents[self.get_agent_index(agents, "model optimization")],
+            expected_output="Model optimization report",
+            context=[data_splitting_task]
+        )
+        tasks.append(model_optimization_task)
 
-                experiment.add_log_entry("Feature importance analysis completed", level="INFO",
-                                         agent="Feature Analysis Specialist")
-            except Exception as e:
-                experiment.add_log_entry(f"Error analyzing feature importance: {str(e)}", level="ERROR")
-                results["feature_analysis"] = {"error": str(e)}
-                return results
+        # Create model training task
+        model_training_task = Task(
+            description=f"""
+            Train the XGBoost model with the optimal hyperparameters.
 
-            # Step 9: Quality assessment
-            experiment.update_status("running", 0.95, "quality_assessment", "Quality Assessment Specialist")
-            experiment.add_log_entry("Assessing model quality", level="INFO", agent="Quality Assessment Specialist")
+            Your task:
+            1. Train model with the best parameters
+            2. Monitor training progress
+            3. Report on training results
 
-            try:
-                interpretation = evaluator.interpret_results(evaluation_results)
+            TOOL INFORMATION:
+            - Tool name: model_trainer
+            - No additional parameters needed
+    
+            Example usage:
+            Action: model_trainer
+            Action Input: {{}}
+    
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available. 
+            """,
+            agent=agents[self.get_agent_index(agents, "model training")],
+            expected_output="Model training report",
+            context=[model_optimization_task]
+        )
+        tasks.append(model_training_task)
 
-                results["quality_assessment"] = interpretation
+        # Create model evaluation task
+        model_evaluation_task = Task(
+            description=f"""
+            Evaluate the trained model on test data.
 
-                experiment.add_log_entry(f"Quality assessment: {interpretation['summary']}", level="INFO",
-                                         agent="Quality Assessment Specialist")
-            except Exception as e:
-                experiment.add_log_entry(f"Error in quality assessment: {str(e)}", level="ERROR")
-                results["quality_assessment"] = {"error": str(e)}
-                return results
+            Your task:
+            1. Calculate ROC-AUC, PR-AUC, precision, recall, and F1
+            2. Find optimal classification threshold
+            3. Generate confusion matrix
+            4. Report on model performance
 
-            # Save model artifacts
-            try:
-                experiment.add_log_entry("Saving model artifacts", level="INFO")
+            TOOL INFORMATION:
+            - Tool name: model_evaluator
+            - No additional parameters needed
+    
+            Example usage:
+            Action: model_evaluator
+            Action Input: {{}}
+    
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available. 
+            """,
+            agent=agents[self.get_agent_index(agents, "model evaluation")],
+            expected_output="Model evaluation report",
+            context=[model_training_task]
+        )
+        tasks.append(model_evaluation_task)
 
-                metrics = {
-                    'roc_auc': evaluation_results['roc_auc'],
-                    'pr_auc': evaluation_results['pr_auc'],
-                    'optimal_threshold_f1': evaluation_results['optimal_thresholds']['f1_optimal'],
-                    'optimal_threshold_f2': evaluation_results['optimal_thresholds']['f2_optimal'],
-                    'anomaly_precision': evaluation_results['class_1']['precision'],
-                    'anomaly_recall': evaluation_results['class_1']['recall'],
-                    'anomaly_f1': evaluation_results['class_1']['f1'],
-                    'classification_report': evaluation_results['classification_report'],
-                    'confusion_matrix': evaluation_results['confusion_matrix'],
-                    'interpretation': interpretation
-                }
+        # Create feature analysis task
+        feature_analysis_task = Task(
+            description=f"""
+            Analyze feature importance from the trained model.
 
-                artifact_paths = save_model_artifacts(
-                    model, vectorizer, mlb, config_dict,
-                    label_encoders, metrics, experiment.output_path
-                )
+            Your task:
+            1. Identify the most important features
+            2. Analyze top features and their impact
+            3. Suggest feature improvements
 
-                results["artifact_paths"] = artifact_paths
-                experiment.add_log_entry("Model artifacts saved", level="INFO")
-            except Exception as e:
-                experiment.add_log_entry(f"Error saving artifacts: {str(e)}", level="ERROR")
-                results["artifact_paths"] = {"error": str(e)}
+            TOOL INFORMATION:
+            - Tool name: feature_analyzer
+            - No additional parameters needed
+    
+            Example usage:
+            Action: feature_analyzer
+            Action Input: {{}}
+    
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available. 
+            """,
+            agent=agents[self.get_agent_index(agents, "feature analysis")],
+            expected_output="Feature importance analysis",
+            context=[model_training_task]
+        )
+        tasks.append(feature_analysis_task)
 
-            experiment.add_log_entry("ML pipeline execution completed", level="INFO")
-            return results
+        # Create quality assessment task
+        quality_assessment_task = Task(
+            description=f"""
+            Assess the overall quality of the model.
 
-        except Exception as e:
-            experiment.add_log_entry(f"Error in ML pipeline: {str(e)}", level="ERROR")
-            import traceback
-            experiment.add_log_entry(traceback.format_exc(), level="ERROR")
+            Your task:
+            1. Interpret evaluation metrics
+            2. Identify strengths and weaknesses
+            3. Make a go/no-go recommendation
+            4. Suggest improvements if needed
+
+            TOOL INFORMATION:
+            - Tool name: quality_assessment
+            - No additional parameters needed
+    
+            Example usage:
+            Action: quality_assessment
+            Action Input: {{}}
+    
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available. 
+            """,
+            agent=agents[self.get_agent_index(agents, "quality assessment")],
+            expected_output="Quality assessment report",
+            context=[model_evaluation_task, feature_analysis_task]
+        )
+        tasks.append(quality_assessment_task)
+
+        # Create model saving task
+        save_agent_index = next((i for i, agent in enumerate(agents)
+                                 if "model deployment" in agent.role.lower()), 0)
+        model_saving_task = Task(
+            description=f"""
+            Save the model and all artifacts to the output directory.
+
+            Your task:
+            1. Save the model, vectorizer, and other artifacts
+            2. Save evaluation metrics
+            3. Report on saved artifacts
+
+            TOOL INFORMATION:
+            - Tool name: model_saver
+            - No additional parameters needed
+    
+            Example usage:
+            Action: model_saver
+            Action Input: {{}}
+            
+            You must use the exact tool name "model_saver" and provide an empty JSON object as input.
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available.    
+            """,
+            agent=agents[save_agent_index],
+            expected_output="Model saving report",
+            context=[model_training_task, model_evaluation_task, quality_assessment_task]
+        )
+        tasks.append(model_saving_task)
+
+        # Create final review task (assigned to the lead agent from the first task)
+        final_review_task = Task(
+            description=f"""
+            Create a comprehensive final report on the anomaly detection project.
+
+            Your task:
+            1. Summarize the entire process
+            2. Highlight key findings from each specialist
+            3. Present final results and recommendations
+            4. Suggest next steps
+            Note: If you encounter errors after 3 attempts, please provide your best analysis with the information available. 
+            """,
+            agent=agents[lead_agent_index],  # Lead agent handles final report
+            expected_output="Comprehensive final report",
+            context=[
+                data_understanding_task,
+                data_preprocessing_task,
+                feature_engineering_task,
+                data_splitting_task,
+                model_optimization_task,
+                model_training_task,
+                model_evaluation_task,
+                feature_analysis_task,
+                quality_assessment_task,
+                model_saving_task
+            ]
+        )
+        tasks.append(final_review_task)
+
+        return tasks
+
+    # Helper function to find agent by role substring
+    def get_agent_index(self, agents, role_substring):
+        """Find the index of an agent by role substring"""
+        for i, agent in enumerate(agents):
+            if role_substring.lower() in agent.role.lower():
+                return i
+        # Return the first agent as fallback
+        return 0
 
     def cancel_experiment(self, experiment_id):
-        """Cancel a running experiment."""
-        if experiment_id in self.experiments and experiment_id in self.active_runs:
-            experiment = self.experiments[experiment_id]
-            # In a real implementation, we would need a proper way to cancel the thread
-            # For now, we'll just update the status
-            experiment.update_status("cancelled")
-            experiment.add_log_entry("Experiment cancelled by user", level="INFO")
-            return experiment.to_dict()
-        return None
+            """Cancel a running experiment."""
+            if experiment_id in self.experiments and experiment_id in self.active_runs:
+                experiment = self.experiments[experiment_id]
+                # In a real implementation, we would need a proper way to cancel the thread
+                # For now, we'll just update the status
+                experiment.update_status("cancelled")
+                experiment.add_log_entry("Experiment cancelled by user", level="INFO")
+                return experiment.to_dict()
+            return None
 
     def delete_experiment(self, experiment_id):
-        """Delete an experiment."""
-        if experiment_id in self.experiments:
-            # If the experiment is running, cancel it first
-            if experiment_id in self.active_runs:
-                self.cancel_experiment(experiment_id)
+            """Delete an experiment."""
+            if experiment_id in self.experiments:
+                # If the experiment is running, cancel it first
+                if experiment_id in self.active_runs:
+                    self.cancel_experiment(experiment_id)
 
-            # Delete the experiment
-            del self.experiments[experiment_id]
-            return True
-        return False
+                # Delete the experiment
+                del self.experiments[experiment_id]
+                return True
+            return False

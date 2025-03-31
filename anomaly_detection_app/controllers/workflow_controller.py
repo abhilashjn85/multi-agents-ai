@@ -24,7 +24,9 @@ class WorkflowController:
     def initialize_default_workflows(self):
         """Initialize default workflows after agent controller is registered."""
         if not self.agent_controller:
-            print("WARNING: No agent controller registered, default workflow may have missing agents")
+            print(
+                "WARNING: No agent controller registered, default workflow may have missing agents"
+            )
 
         # Clear existing workflows to avoid duplicates
         self.workflows = {}
@@ -40,7 +42,7 @@ class WorkflowController:
             description="Default workflow for anomaly detection using XGBoost and LLM agents",
             created_at=datetime.datetime.now().isoformat(),
             updated_at=datetime.datetime.now().isoformat(),
-            process_type="sequential"
+            process_type="sequential",
         )
 
         # If agent controller is available, add default agents
@@ -59,7 +61,9 @@ class WorkflowController:
 
         self.workflows[default_workflow.id] = default_workflow
         print(f"Default workflow created with ID: {default_workflow.id}")
-        print(f"Workflow has {len(default_workflow.agent_ids)} agents and {len(default_workflow.tasks)} tasks")
+        print(
+            f"Workflow has {len(default_workflow.agent_ids)} agents and {len(default_workflow.tasks)} tasks"
+        )
 
     def _add_default_connections(self, workflow, agent_map):
         """Add default connections between agents."""
@@ -73,7 +77,7 @@ class WorkflowController:
             "Model Training Specialist",
             "Model Evaluation Specialist",
             "Feature Analysis Specialist",
-            "Quality Assessment Specialist"
+            "Quality Assessment Specialist",
         ]
 
         # Add connections between agents
@@ -92,29 +96,29 @@ class WorkflowController:
         if "Data Understanding Specialist" in agent_map:
             workflow.add_task(
                 agent_id=agent_map["Data Understanding Specialist"],
-                description="Analyze the data and validate configuration compatibility. " +
-                            "Identify any potential issues for anomaly detection.",
-                expected_output="A detailed analysis of the data structure and quality issues."
+                description="Analyze the data and validate configuration compatibility. "
+                + "Identify any potential issues for anomaly detection.",
+                expected_output="A detailed analysis of the data structure and quality issues.",
             )
 
         # Data Preprocessing Engineer
         if "Data Preprocessing Engineer" in agent_map:
             workflow.add_task(
                 agent_id=agent_map["Data Preprocessing Engineer"],
-                description="Process the raw data according to the configuration including sequence processing, " +
-                            "categorical encoding, and implementing anomaly rules.",
+                description="Process the raw data according to the configuration including sequence processing, "
+                + "categorical encoding, and implementing anomaly rules.",
                 expected_output="Processed data ready for feature engineering.",
-                depends_on=[agent_map.get("Data Understanding Specialist", "")]
+                depends_on=[agent_map.get("Data Understanding Specialist", "")],
             )
 
         # Feature Engineering Specialist
         if "Feature Engineering Specialist" in agent_map:
             workflow.add_task(
                 agent_id=agent_map["Feature Engineering Specialist"],
-                description="Create optimal features for anomaly detection from the processed data including " +
-                            "TF-IDF embeddings, categorical features, and anomaly indicators.",
+                description="Create optimal features for anomaly detection from the processed data including "
+                + "TF-IDF embeddings, categorical features, and anomaly indicators.",
                 expected_output="Feature matrix ready for model training.",
-                depends_on=[agent_map.get("Data Preprocessing Engineer", "")]
+                depends_on=[agent_map.get("Data Preprocessing Engineer", "")],
             )
 
         # Data Splitting Specialist
@@ -123,7 +127,7 @@ class WorkflowController:
                 agent_id=agent_map["Data Splitting Specialist"],
                 description="Find the optimal anomaly ratio for training and create the best train/test split.",
                 expected_output="Optimal train/test split with appropriate anomaly ratio.",
-                depends_on=[agent_map.get("Feature Engineering Specialist", "")]
+                depends_on=[agent_map.get("Feature Engineering Specialist", "")],
             )
 
         # Model Optimization Specialist
@@ -132,7 +136,7 @@ class WorkflowController:
                 agent_id=agent_map["Model Optimization Specialist"],
                 description="Use genetic algorithm to find optimal hyperparameters for the XGBoost model.",
                 expected_output="Optimal hyperparameters for XGBoost.",
-                depends_on=[agent_map.get("Data Splitting Specialist", "")]
+                depends_on=[agent_map.get("Data Splitting Specialist", "")],
             )
 
         # Model Training Specialist
@@ -141,7 +145,7 @@ class WorkflowController:
                 agent_id=agent_map["Model Training Specialist"],
                 description="Train the XGBoost model with the optimal hyperparameters.",
                 expected_output="Trained XGBoost model ready for evaluation.",
-                depends_on=[agent_map.get("Model Optimization Specialist", "")]
+                depends_on=[agent_map.get("Model Optimization Specialist", "")],
             )
 
         # Model Evaluation Specialist
@@ -150,7 +154,7 @@ class WorkflowController:
                 agent_id=agent_map["Model Evaluation Specialist"],
                 description="Evaluate the trained model using appropriate metrics for anomaly detection.",
                 expected_output="Comprehensive evaluation results including ROC-AUC, PR-AUC, and class-specific metrics.",
-                depends_on=[agent_map.get("Model Training Specialist", "")]
+                depends_on=[agent_map.get("Model Training Specialist", "")],
             )
 
         # Feature Analysis Specialist
@@ -159,20 +163,20 @@ class WorkflowController:
                 agent_id=agent_map["Feature Analysis Specialist"],
                 description="Analyze feature importance from the trained model and suggest improvements.",
                 expected_output="Feature importance analysis and suggestions for improvement.",
-                depends_on=[agent_map.get("Model Training Specialist", "")]
+                depends_on=[agent_map.get("Model Training Specialist", "")],
             )
 
         # Quality Assessment Specialist
         if "Quality Assessment Specialist" in agent_map:
             workflow.add_task(
                 agent_id=agent_map["Quality Assessment Specialist"],
-                description="Assess the overall quality of the model and determine if it meets production standards. " +
-                            "Provide feedback for improvement if needed.",
+                description="Assess the overall quality of the model and determine if it meets production standards. "
+                + "Provide feedback for improvement if needed.",
                 expected_output="Quality assessment report with go/no-go decision and feedback for improvement.",
                 depends_on=[
                     agent_map.get("Model Evaluation Specialist", ""),
-                    agent_map.get("Feature Analysis Specialist", "")
-                ]
+                    agent_map.get("Feature Analysis Specialist", ""),
+                ],
             )
 
     def get_workflows(self):
@@ -188,12 +192,12 @@ class WorkflowController:
     def create_workflow(self, data):
         """Create a new workflow."""
         # Ensure the workflow has a unique ID
-        if 'id' not in data or not data['id']:
-            data['id'] = str(uuid.uuid4())
+        if "id" not in data or not data["id"]:
+            data["id"] = str(uuid.uuid4())
 
         # Set created and updated timestamps
-        data['created_at'] = datetime.datetime.now().isoformat()
-        data['updated_at'] = datetime.datetime.now().isoformat()
+        data["created_at"] = datetime.datetime.now().isoformat()
+        data["updated_at"] = datetime.datetime.now().isoformat()
 
         workflow = Workflow.from_dict(data)
         self.workflows[workflow.id] = workflow
@@ -206,12 +210,12 @@ class WorkflowController:
             workflow = self.workflows[workflow_id]
 
             # Handle special collections like connections and tasks
-            if 'connections' in data:
-                connections = [Connection(**conn) for conn in data.pop('connections')]
+            if "connections" in data:
+                connections = [Connection(**conn) for conn in data.pop("connections")]
                 workflow.connections = connections
 
-            if 'tasks' in data:
-                tasks = [TaskDefinition(**task) for task in data.pop('tasks')]
+            if "tasks" in data:
+                tasks = [TaskDefinition(**task) for task in data.pop("tasks")]
                 workflow.tasks = tasks
 
             # Update other attributes
@@ -244,7 +248,7 @@ class WorkflowController:
             description="Default workflow for anomaly detection using XGBoost and LLM agents",
             created_at=datetime.datetime.now().isoformat(),
             updated_at=datetime.datetime.now().isoformat(),
-            process_type="sequential"
+            process_type="sequential",
         )
 
         # Add agents to the workflow
@@ -261,7 +265,7 @@ class WorkflowController:
             "Model Training Specialist",
             "Model Evaluation Specialist",
             "Feature Analysis Specialist",
-            "Quality Assessment Specialist"
+            "Quality Assessment Specialist",
         ]
 
         # Add connections between agents
@@ -278,18 +282,18 @@ class WorkflowController:
         # Data Understanding Specialist
         workflow.add_task(
             agent_id=agent_ids.get("Data Understanding Specialist"),
-            description="Analyze the data and validate configuration compatibility. " +
-                        "Identify any potential issues for anomaly detection.",
-            expected_output="A detailed analysis of the data structure and quality issues."
+            description="Analyze the data and validate configuration compatibility. "
+            + "Identify any potential issues for anomaly detection.",
+            expected_output="A detailed analysis of the data structure and quality issues.",
         )
 
         # Data Preprocessing Engineer
         workflow.add_task(
             agent_id=agent_ids.get("Data Preprocessing Engineer"),
-            description="Process the raw data according to the configuration including sequence processing, " +
-                        "categorical encoding, and implementing anomaly rules.",
+            description="Process the raw data according to the configuration including sequence processing, "
+            + "categorical encoding, and implementing anomaly rules.",
             expected_output="Processed data ready for feature engineering.",
-            depends_on=[agent_ids.get("Data Understanding Specialist")]
+            depends_on=[agent_ids.get("Data Understanding Specialist")],
         )
 
         # Add the rest of the tasks (similar to the previous task definitions)
@@ -304,13 +308,13 @@ class WorkflowController:
         """Save all workflows to a JSON file."""
         workflows_data = [workflow.to_dict() for workflow in self.workflows.values()]
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, 'w') as f:
+        with open(file_path, "w") as f:
             json.dump(workflows_data, f, indent=2)
 
     def load_workflows_from_file(self, file_path):
         """Load workflows from a JSON file."""
         if os.path.exists(file_path):
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 workflows_data = json.load(f)
 
             # Clear existing workflows and load from file

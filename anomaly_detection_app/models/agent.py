@@ -54,4 +54,5 @@ class Agent:
         # In a real implementation, this would create and return a CrewAI Agent
         # For now, just return the dictionary representation
         from crewai import Agent  # Import CrewAI agent
+
         return Agent(name=agent_dict["name"], role=agent_dict["role"])

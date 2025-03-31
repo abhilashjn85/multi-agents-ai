@@ -26,7 +26,7 @@ class MistralClient:
                         "extra": {
                             "temperature": temperature,
                             "max_new_tokens": max_tokens,
-                            "repetition_penalty": 1
+                            "repetition_penalty": 1,
                         }
                     },
                     "inputs": [
@@ -34,18 +34,18 @@ class MistralClient:
                             "name": "input",
                             "shape": [1],
                             "datatype": "str",
-                            "data": [prompt]
+                            "data": [prompt],
                         }
-                    ]
+                    ],
                 },
-                timeout=60
+                timeout=60,
             )
 
             response.raise_for_status()
             result = response.json()
 
-            if 'outputs' in result and len(result['outputs']) > 0:
-                return result['outputs'][0]['data'][0]
+            if "outputs" in result and len(result["outputs"]) > 0:
+                return result["outputs"][0]["data"][0]
             else:
                 raise ValueError(f"Unexpected response format: {result}")
 
@@ -76,10 +76,14 @@ class AgentRunner:
         Returns:
             The response from the LLM as a string
         """
-        prompt = self.format_agent_prompt(agent_role, agent_goal, task_description, agent_backstory)
+        prompt = self.format_agent_prompt(
+            agent_role, agent_goal, task_description, agent_backstory
+        )
         return self.client.generate_response(prompt)
 
-    def format_agent_prompt(self, agent_role, agent_goal, task_description, agent_backstory=""):
+    def format_agent_prompt(
+        self, agent_role, agent_goal, task_description, agent_backstory=""
+    ):
         """
         Format a prompt for an agent task in a way that resembles CrewAI's format.
         """
@@ -113,20 +117,22 @@ Please be thorough in your work and show your reasoning step-by-step.
         context = ""
 
         for i, task_info in enumerate(workflow_tasks):
-            print(f"\n{'=' * 80}\nRunning task {i + 1}/{len(workflow_tasks)}: {task_info['role']}\n{'=' * 80}")
+            print(
+                f"\n{'=' * 80}\nRunning task {i + 1}/{len(workflow_tasks)}: {task_info['role']}\n{'=' * 80}"
+            )
 
             # Add context from previous tasks if available
-            task_with_context = task_info['task']
+            task_with_context = task_info["task"]
             if context:
                 task_with_context += f"\n\nContext from previous tasks:\n{context}"
 
             # Run the task
             start_time = time.time()
             result = self.run_task(
-                task_info['role'],
-                task_info['goal'],
+                task_info["role"],
+                task_info["goal"],
                 task_with_context,
-                task_info.get('backstory', '')
+                task_info.get("backstory", ""),
             )
             end_time = time.time()
 
@@ -153,13 +159,13 @@ def main():
             "role": "Data Understanding Specialist",
             "goal": "Analyze data and validate configuration compatibility",
             "task": "Given a dataset with columns [customer_id, transaction_amount, timestamp, is_fraud], describe the key data patterns we should look for in fraud detection.",
-            "backstory": "You are an expert in financial data analysis with specialization in fraud detection."
+            "backstory": "You are an expert in financial data analysis with specialization in fraud detection.",
         },
         {
             "role": "Feature Engineering Specialist",
             "goal": "Create optimal features for fraud detection",
-            "task": "Based on the data understanding, suggest 5 features we should extract from this dataset for optimal fraud detection."
-        }
+            "task": "Based on the data understanding, suggest 5 features we should extract from this dataset for optimal fraud detection.",
+        },
     ]
 
     results = runner.run_workflow(workflow)
