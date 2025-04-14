@@ -199,19 +199,6 @@ class AgentController:
             return True
         return False
 
-    def to_crew_agent(self, agent_dict):
-        """Convert agent dictionary to CrewAI Agent."""
-        from crewai import Agent as CrewAgent
-
-        # Create a CrewAI Agent from the agent dictionary
-        return CrewAgent(
-            role=agent_dict["role"],
-            goal=agent_dict["goal"],
-            backstory=agent_dict["backstory"],
-            verbose=agent_dict.get("verbose", True),
-            allow_delegation=agent_dict.get("allow_delegation", True),
-        )
-
     def get_agent_map(self):
         """Get a mapping of agent names to IDs."""
         return {agent.name: agent.id for agent in self.agents.values()}

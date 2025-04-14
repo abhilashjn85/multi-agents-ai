@@ -44,15 +44,3 @@ class Agent:
     def from_json(cls, json_str):
         """Create an Agent from a JSON string."""
         return cls.from_dict(json.loads(json_str))
-
-    def to_crew_agent(self, agent_dict):
-        """
-        Convert to a CrewAI Agent object for use in the actual workflow.
-        This method would import and return a CrewAI Agent with the
-        appropriate parameters.
-        """
-        # In a real implementation, this would create and return a CrewAI Agent
-        # For now, just return the dictionary representation
-        from crewai import Agent  # Import CrewAI agent
-
-        return Agent(name=agent_dict["name"], role=agent_dict["role"])

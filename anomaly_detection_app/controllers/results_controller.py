@@ -1,20 +1,10 @@
 import os
 import json
-import pandas as pd
-import numpy as np
 import matplotlib
 
-matplotlib.use("Agg")  # Use non-interactive backend
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import (
-    confusion_matrix,
-    classification_report,
-    roc_curve,
-    precision_recall_curve,
-    auc,
-)
+from anomaly_detection_app.controllers import experiment_controller
 
+matplotlib.use("Agg")  # Use non-interactive backend
 
 class ResultsController:
     """
@@ -27,30 +17,31 @@ class ResultsController:
         self.output_folder = app_config["MODEL_OUTPUT_FOLDER"]
         self.static_folder = app_config.get("STATIC_FOLDER", "static")
 
-    # anomaly_detection_app/controllers/results_controller.py (Update)
-
     def get_results(self, experiment_id):
         """Get the results for a specific experiment."""
+        # We need access to the experiment controller
+        if not hasattr(self, 'experiment_controller'):
+            self.experiment_controller = experiment_controller
+
         experiment = self.experiment_controller.get_experiment(experiment_id)
         if not experiment:
             return {"error": "Experiment not found"}
 
         # Check if we have actual result files
-        result_path = os.path.join(experiment['output_path'], "model_metrics.json")
+        result_path = os.path.join(experiment.output_path, "metrics.json")
+
+        # Initialize feature_importance to ensure it always exists
+        feature_importance = []
 
         if os.path.exists(result_path):
             with open(result_path, 'r') as f:
                 metrics = json.load(f)
 
             # Get feature importance if available
-            feature_importance_path = os.path.join(experiment['output_path'], "feature_importance.json")
-            feature_importance = []
+            feature_importance_path = os.path.join(experiment.output_path, "feature_importance.json")
             if os.path.exists(feature_importance_path):
                 with open(feature_importance_path, 'r') as f:
                     feature_importance = json.load(f)
-
-            # Generate visualization files if they don't exist
-            self._ensure_visualization_files(experiment_id, experiment['output_path'])
 
             return {
                 "id": experiment_id,
@@ -62,7 +53,7 @@ class ResultsController:
                     "f1_score": metrics.get('anomaly_f1', 0.0),
                     "optimal_threshold": metrics.get('optimal_threshold_f1', 0.5),
                 },
-                "feature_importance": feature_importance,
+                "feature_importance": feature_importance,  # This ensures it's always defined
                 "confusion_matrix": metrics.get('confusion_matrix', [[0, 0], [0, 0]]),
                 "visualization_paths": {
                     "confusion_matrix": f"/static/results/{experiment_id}/confusion_matrix.png",
@@ -70,16 +61,22 @@ class ResultsController:
                     "pr_curve": f"/static/results/{experiment_id}/pr_curve.png",
                     "feature_importance": f"/static/results/{experiment_id}/feature_importance.png",
                 },
-                "agent_results": experiment.get('results', {}).get('agent_results', []),
+                "agent_results": experiment.results['agent_results'],
                 "quality_assessment": metrics.get('interpretation', {})
             }
 
         # If no metrics file exists but we have results in the experiment
-        if experiment.get('results'):
-            # Try to extract metrics from agent results
-            agent_results = experiment['results'].get('agent_results', [])
+        if experiment.results:
             # Generate visualization files
-            self._ensure_visualization_files(experiment_id, experiment['output_path'])
+            agent_results = experiment.results.get('agent_results', [])
+            # Default feature importance if not available
+            feature_importance = [
+                {"feature": "feature_1", "importance": 0.23},
+                {"feature": "feature_2", "importance": 0.18},
+                {"feature": "feature_3", "importance": 0.15},
+                {"feature": "feature_4", "importance": 0.12},
+                {"feature": "feature_5", "importance": 0.10},
+            ]
 
             # Return sample results
             return {
@@ -92,13 +89,7 @@ class ResultsController:
                     "f1_score": 0.88,
                     "optimal_threshold": 0.35,
                 },
-                "feature_importance": [
-                    {"feature": "feature_1", "importance": 0.23},
-                    {"feature": "feature_2", "importance": 0.18},
-                    {"feature": "feature_3", "importance": 0.15},
-                    {"feature": "feature_4", "importance": 0.12},
-                    {"feature": "feature_5", "importance": 0.10},
-                ],
+                "feature_importance": feature_importance,  # Using our default data
                 "confusion_matrix": [[985, 15], [5, 95]],
                 "visualization_paths": {
                     "confusion_matrix": f"/static/results/{experiment_id}/confusion_matrix.png",
@@ -109,146 +100,76 @@ class ResultsController:
                 "agent_results": agent_results
             }
 
-    def _ensure_visualization_files(self, experiment_id):
-        """Ensure visualization files exist for the experiment."""
-        # Create directories if they don't exist
-        vis_dir = os.path.join(self.static_folder, "results", experiment_id)
-        os.makedirs(vis_dir, exist_ok=True)
+        # Fallback if nothing is available
+        return {
+            "error": "No results available for this experiment",
+            "id": experiment_id,
+            "metrics": {},
+            "feature_importance": [],  # Empty but defined
+            "visualization_paths": {},
+            "confusion_matrix": [[0, 0], [0, 0]],
+            "agent_results": []
+        }
 
-        # Generate sample visualization files if they don't exist
-        self._generate_sample_confusion_matrix(
-            os.path.join(vis_dir, "confusion_matrix.png")
-        )
-        self._generate_sample_roc_curve(os.path.join(vis_dir, "roc_curve.png"))
-        self._generate_sample_pr_curve(os.path.join(vis_dir, "pr_curve.png"))
-        self._generate_sample_feature_importance(
-            os.path.join(vis_dir, "feature_importance.png")
-        )
+    def compare_experiments(self, experiment_ids):
+        """Compare multiple experiments and their results."""
+        comparison = {
+            "experiments": [],
+            "metrics_comparison": {
+                "roc_auc": [],
+                "pr_auc": [],
+                "anomaly_precision": [],
+                "anomaly_recall": [],
+                "f1_score": [],
+                "optimal_threshold": []
+            },
+            "feature_importance_comparison": {},
+            "best_experiment": None
+        }
 
-    def _generate_sample_confusion_matrix(self, output_path):
-        """Generate a sample confusion matrix visualization."""
-        if os.path.exists(output_path):
-            return
+        max_f1 = 0
+        best_exp_id = None
 
-        plt.figure(figsize=(10, 8))
+        for exp_id in experiment_ids:
+            results = self.get_results(exp_id)
+            if "error" in results:
+                continue
 
-        # Sample confusion matrix
-        cm = np.array([[985, 15], [5, 95]])
+            experiment = self.experiment_controller.get_experiment(exp_id)
+            if not experiment:
+                continue
 
-        # Plot raw counts
-        plt.subplot(1, 2, 1)
-        sns.heatmap(
-            cm,
-            annot=True,
-            fmt="d",
-            cmap="Blues",
-            xticklabels=["Normal", "Anomaly"],
-            yticklabels=["Normal", "Anomaly"],
-        )
-        plt.xlabel("Predicted Label")
-        plt.ylabel("True Label")
-        plt.title("Confusion Matrix (Counts)")
+            comparison["experiments"].append({
+                "id": exp_id,
+                "name": experiment.get('name', f"Experiment {exp_id}"),
+                "created_at": experiment.get('created_at', ""),
+                "status": experiment.get('status', "")
+            })
 
-        # Plot percentages
-        plt.subplot(1, 2, 2)
-        cm_norm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
-        sns.heatmap(
-            cm_norm,
-            annot=True,
-            fmt=".1%",
-            cmap="Blues",
-            xticklabels=["Normal", "Anomaly"],
-            yticklabels=["Normal", "Anomaly"],
-        )
-        plt.xlabel("Predicted Label")
-        plt.ylabel("True Label")
-        plt.title("Confusion Matrix (Percentages)")
+            # Add metrics to comparison
+            for metric in comparison["metrics_comparison"].keys():
+                if metric in results.get("metrics", {}):
+                    comparison["metrics_comparison"][metric].append({
+                        "experiment_id": exp_id,
+                        "value": results["metrics"][metric]
+                    })
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=300)
-        plt.close()
+            # Track best experiment by F1 score
+            current_f1 = results.get("metrics", {}).get("f1_score", 0)
+            if current_f1 > max_f1:
+                max_f1 = current_f1
+                best_exp_id = exp_id
 
-    def _generate_sample_roc_curve(self, output_path):
-        """Generate a sample ROC curve visualization."""
-        if os.path.exists(output_path):
-            return
+            # Process feature importance (more complex)
+            for feature_data in results.get("feature_importance", []):
+                feature_name = feature_data.get("feature")
+                if feature_name:
+                    if feature_name not in comparison["feature_importance_comparison"]:
+                        comparison["feature_importance_comparison"][feature_name] = []
+                    comparison["feature_importance_comparison"][feature_name].append({
+                        "experiment_id": exp_id,
+                        "importance": feature_data.get("importance", 0)
+                    })
 
-        plt.figure(figsize=(10, 8))
-
-        # Generate sample ROC curve data
-        fpr = np.linspace(0, 1, 100)
-        tpr = 1 - np.exp(-3 * fpr)  # A curve that's better than random
-
-        plt.plot(fpr, tpr, "b-", linewidth=2, label=f"ROC (AUC = 0.95)")
-        plt.plot([0, 1], [0, 1], "k--", alpha=0.5)
-        plt.xlabel("False Positive Rate")
-        plt.ylabel("True Positive Rate")
-        plt.title("ROC Curve")
-        plt.grid(True, alpha=0.3)
-        plt.legend(loc="lower right")
-        plt.savefig(output_path, dpi=300)
-        plt.close()
-
-    def _generate_sample_pr_curve(self, output_path):
-        """Generate a sample Precision-Recall curve visualization."""
-        if os.path.exists(output_path):
-            return
-
-        plt.figure(figsize=(10, 8))
-
-        # Generate sample PR curve data
-        recall = np.linspace(0, 1, 100)
-        precision = np.maximum(0, 1 - recall**2)  # A curve that starts high and drops
-
-        plt.plot(recall, precision, "r-", linewidth=2, label=f"PR (AUC = 0.87)")
-        plt.axhline(
-            y=0.1, color="k", linestyle="--", alpha=0.5, label=f"Baseline (ratio = 0.1)"
-        )
-        plt.xlabel("Recall")
-        plt.ylabel("Precision")
-        plt.title("Precision-Recall Curve")
-        plt.grid(True, alpha=0.3)
-        plt.legend(loc="upper right")
-        plt.savefig(output_path, dpi=300)
-        plt.close()
-
-    def _generate_sample_feature_importance(self, output_path):
-        """Generate a sample feature importance visualization."""
-        if os.path.exists(output_path):
-            return
-
-        plt.figure(figsize=(12, 10))
-
-        # Sample feature importance data
-        features = ["feature_1", "feature_2", "feature_3", "feature_4", "feature_5"]
-        importance = [0.23, 0.18, 0.15, 0.12, 0.10]
-
-        # Sort by importance
-        sorted_idx = np.argsort(importance)
-        features = [features[i] for i in sorted_idx]
-        importance = [importance[i] for i in sorted_idx]
-
-        # Plot bar chart
-        plt.barh(features, importance, color="skyblue")
-        plt.xlabel("Importance Score")
-        plt.ylabel("Feature")
-        plt.title("Feature Importance")
-        plt.gca().invert_yaxis()  # Display highest importance at the top
-        plt.grid(axis="x", linestyle="--", alpha=0.6)
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=300)
-        plt.close()
-
-    def load_results_from_file(self, experiment_id, results_path):
-        """Load experiment results from a file."""
-        if os.path.exists(results_path):
-            with open(results_path, "r") as f:
-                results = json.load(f)
-            return results
-        return None
-
-    def save_results_to_file(self, experiment_id, results, results_path):
-        """Save experiment results to a file."""
-        os.makedirs(os.path.dirname(results_path), exist_ok=True)
-        with open(results_path, "w") as f:
-            json.dump(results, f, indent=2)
+        comparison["best_experiment"] = best_exp_id
+        return comparison
