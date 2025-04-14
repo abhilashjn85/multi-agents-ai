@@ -365,35 +365,43 @@ class ExperimentController:
                 },
                 {
                     "agent_index": 1,  # Data Preprocessing Engineer
-                    "description": "Process the raw data according to configuration. Handle missing values, sequence processing, and categorical encoding."
+                    "description": "Process the raw data according to configuration. Handle missing values, sequence "
+                                   "processing, and categorical encoding."
                 },
                 {
                     "agent_index": 2,  # Feature Engineering Specialist
-                    "description": "Create features for the model based on the processed data. Create TF-IDF features from sequences and handle categorical features."
+                    "description": "Create features for the model based on the processed data. Create TF-IDF features "
+                                   "from sequences and handle categorical features."
                 },
                 {
                     "agent_index": 3,  # Data Splitting Specialist
-                    "description": "Split the data into training and testing sets with optimal anomaly ratio. Find the best anomaly ratio for training and create balanced splits."
+                    "description": "Split the data into training and testing sets with optimal anomaly ratio. Find "
+                                   "the best anomaly ratio for training and create balanced splits."
                 },
                 {
                     "agent_index": 4,  # Model Optimization Specialist
-                    "description": "Find optimal hyperparameters for the XGBoost model using genetic algorithm optimization."
+                    "description": "Find optimal hyperparameters for the XGBoost model using genetic algorithm "
+                                   "optimization."
                 },
                 {
                     "agent_index": 5,  # Model Training Specialist
-                    "description": "Train the XGBoost model with the optimal hyperparameters found in the previous step."
+                    "description": "Train the XGBoost model with the optimal hyperparameters found in the previous "
+                                   "step."
                 },
                 {
                     "agent_index": 6,  # Model Evaluation Specialist
-                    "description": "Evaluate the trained model on test data. Calculate metrics like ROC-AUC, PR-AUC, precision, recall, and F1 score."
+                    "description": "Evaluate the trained model on test data. Calculate metrics like ROC-AUC, PR-AUC, "
+                                   "precision, recall, and F1 score."
                 },
                 {
                     "agent_index": 7,  # Feature Analysis Specialist
-                    "description": "Analyze feature importance from the trained model. Identify the most important features and suggest potential improvements."
+                    "description": "Analyze feature importance from the trained model. Identify the most important "
+                                   "features and suggest potential improvements."
                 },
                 {
                     "agent_index": 8,  # Quality Assessment Specialist
-                    "description": "Assess the overall quality of the model. Make a go/no-go recommendation for model deployment."
+                    "description": "Assess the overall quality of the model. Make a go/no-go recommendation for model "
+                                   "deployment."
                 },
                 {
                     "agent_index": 9,  # Model Deployment Specialist
@@ -469,7 +477,6 @@ class ExperimentController:
             experiment.add_log_entry(f"Error processing workflow results: {str(e)}", level="ERROR")
             import traceback
             experiment.add_log_entry(traceback.format_exc(), level="ERROR")
-
 
     def _ensure_visualizations(self, experiment):
         """Ensure visualization files exist for the results page."""
@@ -788,24 +795,24 @@ class ExperimentController:
         return 0
 
     def cancel_experiment(self, experiment_id):
-            """Cancel a running experiment."""
-            if experiment_id in self.experiments and experiment_id in self.active_runs:
-                experiment = self.experiments[experiment_id]
-                # In a real implementation, we would need a proper way to cancel the thread
-                # For now, we'll just update the status
-                experiment.update_status("cancelled")
-                experiment.add_log_entry("Experiment cancelled by user", level="INFO")
-                return experiment.to_dict()
-            return None
+        """Cancel a running experiment."""
+        if experiment_id in self.experiments and experiment_id in self.active_runs:
+            experiment = self.experiments[experiment_id]
+            # In a real implementation, we would need a proper way to cancel the thread
+            # For now, we'll just update the status
+            experiment.update_status("cancelled")
+            experiment.add_log_entry("Experiment cancelled by user", level="INFO")
+            return experiment.to_dict()
+        return None
 
     def delete_experiment(self, experiment_id):
-            """Delete an experiment."""
-            if experiment_id in self.experiments:
-                # If the experiment is running, cancel it first
-                if experiment_id in self.active_runs:
-                    self.cancel_experiment(experiment_id)
+        """Delete an experiment."""
+        if experiment_id in self.experiments:
+            # If the experiment is running, cancel it first
+            if experiment_id in self.active_runs:
+                self.cancel_experiment(experiment_id)
 
-                # Delete the experiment
-                del self.experiments[experiment_id]
-                return True
-            return False
+            # Delete the experiment
+            del self.experiments[experiment_id]
+            return True
+        return False

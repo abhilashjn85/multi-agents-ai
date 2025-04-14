@@ -2,6 +2,8 @@ import os
 import json
 import matplotlib
 
+from anomaly_detection_app.controllers import experiment_controller
+
 matplotlib.use("Agg")  # Use non-interactive backend
 
 class ResultsController:
@@ -15,14 +17,21 @@ class ResultsController:
         self.output_folder = app_config["MODEL_OUTPUT_FOLDER"]
         self.static_folder = app_config.get("STATIC_FOLDER", "static")
 
-    def get_results(self, experiment_id, experiment):
+    def get_results(self, experiment_id):
         """Get the results for a specific experiment."""
+        # We need access to the experiment controller
+        if not hasattr(self, 'experiment_controller'):
+            self.experiment_controller = experiment_controller
+
+        experiment = self.experiment_controller.get_experiment(experiment_id)
         if not experiment:
             return {"error": "Experiment not found"}
 
         # Check if we have actual result files
         result_path = os.path.join(experiment.output_path, "metrics.json")
 
+        # Initialize feature_importance to ensure it always exists
+        feature_importance = []
 
         if os.path.exists(result_path):
             with open(result_path, 'r') as f:
@@ -30,23 +39,9 @@ class ResultsController:
 
             # Get feature importance if available
             feature_importance_path = os.path.join(experiment.output_path, "feature_importance.json")
-            feature_importance = []
             if os.path.exists(feature_importance_path):
                 with open(feature_importance_path, 'r') as f:
                     feature_importance = json.load(f)
-
-            # Generate visualization files if they don't exist
-            # self._ensure_visualization_files(experiment_id, experiment.output_path)
-
-            summary_path = os.path.join(experiment.output_path, "summary_report.txt")
-            summary = ""
-
-            if os.path.exists(summary_path):
-                try:
-                    with open(summary_path, 'r') as f:
-                        summary = f.read()
-                except Exception as e:
-                    print(f"Error loading summary: {str(e)}")
 
             return {
                 "id": experiment_id,
@@ -58,7 +53,7 @@ class ResultsController:
                     "f1_score": metrics.get('anomaly_f1', 0.0),
                     "optimal_threshold": metrics.get('optimal_threshold_f1', 0.5),
                 },
-                "feature_importance": feature_importance,
+                "feature_importance": feature_importance,  # This ensures it's always defined
                 "confusion_matrix": metrics.get('confusion_matrix', [[0, 0], [0, 0]]),
                 "visualization_paths": {
                     "confusion_matrix": f"/static/results/{experiment_id}/confusion_matrix.png",
@@ -67,16 +62,21 @@ class ResultsController:
                     "feature_importance": f"/static/results/{experiment_id}/feature_importance.png",
                 },
                 "agent_results": experiment.results['agent_results'],
-                "quality_assessment": metrics.get('interpretation', {}),
-                "summary": summary
+                "quality_assessment": metrics.get('interpretation', {})
             }
 
         # If no metrics file exists but we have results in the experiment
         if experiment.results:
-            # Try to extract metrics from agent results
-            agent_results = experiment.results.get('agent_results', [])
             # Generate visualization files
-            self._ensure_visualization_files(experiment_id)
+            agent_results = experiment.results.get('agent_results', [])
+            # Default feature importance if not available
+            feature_importance = [
+                {"feature": "feature_1", "importance": 0.23},
+                {"feature": "feature_2", "importance": 0.18},
+                {"feature": "feature_3", "importance": 0.15},
+                {"feature": "feature_4", "importance": 0.12},
+                {"feature": "feature_5", "importance": 0.10},
+            ]
 
             # Return sample results
             return {
@@ -89,13 +89,7 @@ class ResultsController:
                     "f1_score": 0.88,
                     "optimal_threshold": 0.35,
                 },
-                "feature_importance": [
-                    {"feature": "feature_1", "importance": 0.23},
-                    {"feature": "feature_2", "importance": 0.18},
-                    {"feature": "feature_3", "importance": 0.15},
-                    {"feature": "feature_4", "importance": 0.12},
-                    {"feature": "feature_5", "importance": 0.10},
-                ],
+                "feature_importance": feature_importance,  # Using our default data
                 "confusion_matrix": [[985, 15], [5, 95]],
                 "visualization_paths": {
                     "confusion_matrix": f"/static/results/{experiment_id}/confusion_matrix.png",
@@ -106,19 +100,76 @@ class ResultsController:
                 "agent_results": agent_results
             }
 
-    def _ensure_visualization_files(self, experiment_id):
-        """Ensure visualization files exist for the experiment."""
-        # Create directories if they don't exist
-        vis_dir = os.path.join(self.static_folder, "results", experiment_id)
-        os.makedirs(vis_dir, exist_ok=True)
+        # Fallback if nothing is available
+        return {
+            "error": "No results available for this experiment",
+            "id": experiment_id,
+            "metrics": {},
+            "feature_importance": [],  # Empty but defined
+            "visualization_paths": {},
+            "confusion_matrix": [[0, 0], [0, 0]],
+            "agent_results": []
+        }
 
-        # Generate sample visualization files if they don't exist
-        self._generate_sample_confusion_matrix(
-            os.path.join(vis_dir, "confusion_matrix.png")
-        )
-        self._generate_sample_roc_curve(os.path.join(vis_dir, "roc_curve.png"))
-        self._generate_sample_pr_curve(os.path.join(vis_dir, "pr_curve.png"))
-        self._generate_sample_feature_importance(
-            os.path.join(vis_dir, "feature_importance.png")
-        )
+    def compare_experiments(self, experiment_ids):
+        """Compare multiple experiments and their results."""
+        comparison = {
+            "experiments": [],
+            "metrics_comparison": {
+                "roc_auc": [],
+                "pr_auc": [],
+                "anomaly_precision": [],
+                "anomaly_recall": [],
+                "f1_score": [],
+                "optimal_threshold": []
+            },
+            "feature_importance_comparison": {},
+            "best_experiment": None
+        }
 
+        max_f1 = 0
+        best_exp_id = None
+
+        for exp_id in experiment_ids:
+            results = self.get_results(exp_id)
+            if "error" in results:
+                continue
+
+            experiment = self.experiment_controller.get_experiment(exp_id)
+            if not experiment:
+                continue
+
+            comparison["experiments"].append({
+                "id": exp_id,
+                "name": experiment.get('name', f"Experiment {exp_id}"),
+                "created_at": experiment.get('created_at', ""),
+                "status": experiment.get('status', "")
+            })
+
+            # Add metrics to comparison
+            for metric in comparison["metrics_comparison"].keys():
+                if metric in results.get("metrics", {}):
+                    comparison["metrics_comparison"][metric].append({
+                        "experiment_id": exp_id,
+                        "value": results["metrics"][metric]
+                    })
+
+            # Track best experiment by F1 score
+            current_f1 = results.get("metrics", {}).get("f1_score", 0)
+            if current_f1 > max_f1:
+                max_f1 = current_f1
+                best_exp_id = exp_id
+
+            # Process feature importance (more complex)
+            for feature_data in results.get("feature_importance", []):
+                feature_name = feature_data.get("feature")
+                if feature_name:
+                    if feature_name not in comparison["feature_importance_comparison"]:
+                        comparison["feature_importance_comparison"][feature_name] = []
+                    comparison["feature_importance_comparison"][feature_name].append({
+                        "experiment_id": exp_id,
+                        "importance": feature_data.get("importance", 0)
+                    })
+
+        comparison["best_experiment"] = best_exp_id
+        return comparison

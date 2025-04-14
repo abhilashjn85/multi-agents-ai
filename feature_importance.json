@@ -1,0 +1,50 @@
+[
+  {
+    "Feature": "tfidf_EXECUTION_FAILURE CREATE_PENDING_PAYMENT_REVERSAL",
+    "Importance": 100.67379760742188
+  },
+  {
+    "Feature": "tfidf_EXECUTION_FAILURE",
+    "Importance": 97.19503021240234
+  },
+  {
+    "Feature": "tfidf_EXECUTION_FAILURE RECOVER_DISPUTED_FUNDS",
+    "Importance": 93.19595336914062
+  },
+  {
+    "Feature": "tfidf_CREATE_PENDING_PAYMENT_REVERSAL FAILURE",
+    "Importance": 89.80138397216797
+  },
+  {
+    "Feature": "tfidf_FAILURE EXECUTION_FAILURE",
+    "Importance": 84.34845733642578
+  },
+  {
+    "Feature": "tfidf_FAILURE EXECUTION_FAILURE RECOVER_DISPUTED_FUNDS",
+    "Importance": 78.15049743652344
+  },
+  {
+    "Feature": "feature_136",
+    "Importance": 77.75643920898438
+  },
+  {
+    "Feature": "tfidf_UNAUTH",
+    "Importance": 5.158320903778076
+  },
+  {
+    "Feature": "tfidf_SUCCESS",
+    "Importance": 1.8195610046386719
+  },
+  {
+    "Feature": "tfidf_RECOVER_DISPUTED_FUNDS",
+    "Importance": 1.601287841796875
+  },
+  {
+    "Feature": "tfidf_RECOVER_DISPUTED_FUNDS SUCCESS",
+    "Importance": 0.6808291673660278
+  },
+  {
+    "Feature": "tfidf_RECEIVER_LIABLE",
+    "Importance": 0.64581298828125
+  }
+]

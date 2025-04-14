@@ -1,0 +1,35 @@
+ANOMALY DETECTION MODEL SUMMARY
+==============================
+
+Model Type: XGBoost
+ROC-AUC Score: 0.9992
+PR-AUC Score: 0.8993
+Optimal Threshold (F1): 0.3000
+Anomaly Precision: 0.0000
+Anomaly Recall: 0.0000
+
+INTERPRETATION:
+Model achieved ROC-AUC of 0.9992 and PR-AUC of 0.8993. For normal cases (class 0), precision is 0.9930 and recall is 1.0000. For anomaly cases (class 1), precision is 0.0000 and recall is 0.0000.
+
+Strengths:
+- Strong overall discriminative ability (ROC-AUC > 0.8)
+
+Weaknesses:
+- Low precision for anomalies may lead to too many false alerts
+- Low recall for anomalies means many anomalies may be missed
+
+Suggestions:
+- Consider adjusting the classification threshold to improve precision
+- Try increasing the anomaly ratio in training data to improve recall
+
+TOP FEATURES:
+1. tfidf_EXECUTION_FAILURE CREATE_PENDING_PAYMENT_REVERSAL: 100.6738
+2. tfidf_EXECUTION_FAILURE: 97.1950
+3. tfidf_EXECUTION_FAILURE RECOVER_DISPUTED_FUNDS: 93.1960
+4. tfidf_CREATE_PENDING_PAYMENT_REVERSAL FAILURE: 89.8014
+5. tfidf_FAILURE EXECUTION_FAILURE: 84.3485
+6. tfidf_FAILURE EXECUTION_FAILURE RECOVER_DISPUTED_FUNDS: 78.1505
+7. feature_136: 77.7564
+8. tfidf_UNAUTH: 5.1583
+9. tfidf_SUCCESS: 1.8196
+10. tfidf_RECOVER_DISPUTED_FUNDS: 1.6013
