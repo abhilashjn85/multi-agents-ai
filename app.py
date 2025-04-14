@@ -37,6 +37,9 @@ results_controller = ResultsController(app.config)
 workflow_controller.register_agent_controller(agent_controller)
 experiment_controller.register_controllers(agent_controller, workflow_controller)
 
+results_controller.experiment_controller = experiment_controller
+
+
 
 @app.route("/")
 def index():
@@ -236,7 +239,7 @@ def api_cancel_experiment(experiment_id):
 def view_results(experiment_id):
     """View the results of an experiment"""
     experiment = experiment_controller.get_experiment(experiment_id)
-    results = results_controller.get_results(experiment_id, experiment)
+    results = results_controller.get_results(experiment_id)
     return render_template("results.html", experiment=experiment, results=results)
 
 
@@ -246,6 +249,22 @@ def api_results(experiment_id):
     experiment = experiment_controller.get_experiment(experiment_id)
     results = results_controller.get_results(experiment_id, experiment)
     return jsonify(results)
+
+@app.route("/api/compare-experiments", methods=["POST"])
+def api_compare_experiments():
+    """API endpoint to compare multiple experiments."""
+    experiment_ids = request.json.get('experiment_ids', [])
+    if not experiment_ids:
+        return jsonify({"error": "No experiment IDs provided"})
+
+    comparison_results = results_controller.compare_experiments(experiment_ids)
+    return jsonify(comparison_results)
+
+@app.route("/compare")
+def compare_experiments():
+    """Render the experiment comparison page"""
+    experiments = experiment_controller.get_experiments()
+    return render_template("compare.html", experiments=experiments)
 
 
 def allowed_file(filename, allowed_extensions):
